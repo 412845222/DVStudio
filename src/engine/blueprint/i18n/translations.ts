@@ -1,4 +1,4 @@
-import { t } from './I18nManager'
+﻿import { t } from './I18nManager'
 
 export const NODE_TYPE_KEY_MAP: Record<string, string> = {
 	text: 'aiworkflow.canvas.nodeTypes.text',
@@ -13,6 +13,7 @@ export const NODE_TYPE_KEY_MAP: Record<string, string> = {
 	'scene-understanding': 'aiworkflow.canvas.nodeTypes.sceneUnderstanding',
 	'scene-layout': 'aiworkflow.canvas.nodeTypes.sceneLayout',
 	'scene-decompose': 'aiworkflow.canvas.nodeTypes.sceneDecompose',
+	'director-console': 'aiworkflow.canvas.nodeTypes.directorConsole',
 	story: 'aiworkflow.canvas.nodeTypes.story',
 	'text-merge': 'aiworkflow.canvas.nodeTypes.textMerge'
 }
@@ -30,6 +31,7 @@ export const NODE_TITLE_KEY_MAP: Record<string, string> = {
 	'scene-understanding': 'aiworkflow.canvas.nodeTitles.sceneUnderstanding',
 	'scene-layout': 'aiworkflow.canvas.nodeTitles.sceneLayout',
 	'scene-decompose': 'aiworkflow.canvas.nodeTitles.sceneDecompose',
+	'director-console': 'aiworkflow.canvas.nodeTitles.directorConsole',
 	story: 'aiworkflow.canvas.nodeTitles.story',
 	'text-merge': 'aiworkflow.canvas.nodeTitles.textMerge',
 	base: 'aiworkflow.canvas.nodeTitles.base'
@@ -51,6 +53,7 @@ export const DEFAULT_NODE_TITLES: Record<string, string> = {
 	'scene-understanding': 'scene-understanding',
 	'scene-layout': 'scene-layout',
 	'scene-decompose': 'scene-decompose',
+	'director-console': 'director-console',
 	story: 'story',
 	'text-merge': 'text-merge',
 	// Chinese short (without suffix)
@@ -66,6 +69,7 @@ export const DEFAULT_NODE_TITLES: Record<string, string> = {
 	场景理解: 'scene-understanding',
 	场景布局: 'scene-layout',
 	场景拆解: 'scene-decompose',
+	导演控制台: 'director-console',
 	故事: 'story',
 	文本合并: 'text-merge',
 	// Chinese with "节点" suffix
@@ -85,6 +89,7 @@ export const DEFAULT_NODE_TITLES: Record<string, string> = {
 	场景布局节点: 'scene-layout',
 	场景拆解节点: 'scene-decompose',
 	场景分解节点: 'scene-decompose',
+	导演控制台节点: 'director-console',
 	剧情节点: 'story',
 	文本整合节点: 'text-merge',
 	文本合并节点: 'text-merge',
@@ -99,6 +104,7 @@ export const DEFAULT_NODE_TITLES: Record<string, string> = {
 	'Scene Understanding': 'scene-understanding',
 	'Scene Layout': 'scene-layout',
 	'Scene Decompose': 'scene-decompose',
+	'Director Console': 'director-console',
 	Story: 'story',
 	'Text Merge': 'text-merge',
 	// English with "Node" suffix
@@ -115,6 +121,7 @@ export const DEFAULT_NODE_TITLES: Record<string, string> = {
 	'Scene Understanding Node': 'scene-understanding',
 	'Scene Layout Node': 'scene-layout',
 	'Scene Decompose Node': 'scene-decompose',
+	'Director Console Node': 'director-console',
 	'Story Node': 'story',
 	'Text Merge Node': 'text-merge',
 	'Workflow Node': 'base'
@@ -158,7 +165,9 @@ export const PORT_LABEL_KEY_MAP: Record<string, string> = {
 	入口: 'aiworkflow.canvas.inputAnchor',
 	Input: 'aiworkflow.canvas.inputAnchor',
 	出口: 'aiworkflow.canvas.outputAnchor',
-	Output: 'aiworkflow.canvas.outputAnchor'
+	Output: 'aiworkflow.canvas.outputAnchor',
+	布局JSON: 'aiworkflow.canvas.ports.layoutJson',
+	'Layout JSON': 'aiworkflow.canvas.ports.layoutJson'
 }
 
 export function translateNodeType(type: string): string {

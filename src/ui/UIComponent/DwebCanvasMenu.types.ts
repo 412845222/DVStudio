@@ -10,6 +10,7 @@ export type DwebCanvasMenuNodeActionId =
 	| 'rotate-image'
 	| 'unreal-export'
 	| 'blender'
+	| 'director-console'
 
 export type DwebCanvasMenuSpecialActionId = 'upload'
 

@@ -29,6 +29,7 @@
 						:zoom="cameraState.zoom"
 						:width="node.width"
 						:height="node.height"
+						:size-customized="node.sizeCustomized"
 						:status="node.status"
 						:selected="node.selected"
 						:accent-color="node.accentColor"
@@ -62,6 +63,7 @@
 						@update-scene-understanding-settings="onBusinessUpdateSceneUnderstandingSettings"
 						@request-scene-models="onBusinessRequestSceneModels"
 						@run-scene-understanding="onBusinessRunSceneUnderstanding"
+						@run-director-room="onBusinessRunDirectorRoom"
 						@cancel-scene-understanding="onBusinessCancelSceneUnderstanding"
 						@run-scene-decompose="onBusinessRunSceneDecompose"
 						@run-scene-layout="onBusinessRunSceneLayout"
@@ -103,6 +105,7 @@
 						@blender-init-workspace="onBusinessBlenderInitWorkspace"
 						@update-blender-settings="onBusinessUpdateBlenderSettings"
 						@blender-compress-context="onBusinessBlenderCompressContext"
+						@open-director-console="onBusinessOpenDirectorConsole"
 					/>
 				</DomNodeWrapper>
 			</TransitionGroup>
@@ -160,6 +163,8 @@ interface DomNodeRenderData {
 	width: number
 	height: number
 	selected: boolean
+	/** 每帧从 node.data.sizeCustomized 同步，保证业务组件能响应式感知尺寸定制状态 */
+	sizeCustomized: boolean
 	accentColor: string
 	status: NodeStatus
 	inputPorts: PortRenderData[]
@@ -210,6 +215,7 @@ const emit = defineEmits<{
 	): void
 	(e: 'node-request-scene-models', nodeId: string): void
 	(e: 'node-run-scene-understanding', nodeId: string): void
+	(e: 'node-run-director-room', payload: { nodeId: string; roomId: string }): void
 	(e: 'node-cancel-scene-understanding', nodeId: string): void
 	(e: 'node-run-scene-decompose', nodeId: string): void
 	(e: 'node-run-scene-layout', nodeId: string): void
@@ -260,6 +266,7 @@ const emit = defineEmits<{
 	(e: 'node-blender-init-workspace', payload: { nodeId: string }): void
 	(e: 'node-update-blender-settings', payload: { nodeId: string; patch: Record<string, any> }): void
 	(e: 'node-blender-compress-context', payload: { nodeId: string }): void
+	(e: 'node-open-director-console', payload: { nodeId: string }): void
 }>()
 
 const props = defineProps<{
@@ -561,6 +568,10 @@ function onBusinessRunSceneUnderstanding(nodeId: string) {
 	emit('node-run-scene-understanding', nodeId)
 }
 
+function onBusinessRunDirectorRoom(nodeId: string, roomId: string) {
+	emit('node-run-director-room', { nodeId, roomId })
+}
+
 function onBusinessCancelSceneUnderstanding(nodeId: string) {
 	emit('node-cancel-scene-understanding', nodeId)
 }
@@ -729,6 +740,9 @@ function onBusinessUpdateBlenderSettings(payload: { nodeId: string; patch: Recor
 }
 function onBusinessBlenderCompressContext(payload: { nodeId: string }) {
 	emit('node-blender-compress-context', payload)
+}
+function onBusinessOpenDirectorConsole(payload: { nodeId: string }) {
+	emit('node-open-director-console', payload)
 }
 
 const viewportSize = ref({ width: 800, height: 600 })
@@ -1455,6 +1469,7 @@ function syncDomNodes() {
 			height: wb.height,
 			// 关键修复：根据实际选中状态设置，而不是全部设为true
 			selected: selectedNodeIds.has(node.id),
+			sizeCustomized: !!node.data.sizeCustomized,
 			accentColor: getNodeAccentColor(node),
 			status: getNodeStatus(node),
 			inputPorts: extractPortData(node.inputPorts, wb.x, wb.y),

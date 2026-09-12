@@ -7,6 +7,7 @@ export type IpcResult<T = unknown> = {
 
 type DwebGlobal = {
 	dweb?: {
+		deepseekHarness?: Record<string, unknown>
 		common?: Record<string, unknown>
 		chat?: Record<string, unknown>
 		export?: Record<string, unknown>
@@ -54,6 +55,8 @@ export function hasIpcModule(moduleName: string): boolean {
 	if (!hasIpcApi()) return false
 	const dweb = getDwebGlobal().dweb
 	if (!dweb) return false
+	if (moduleName === 'deepseekHarness')
+		return typeof dweb.deepseekHarness === 'object' && dweb.deepseekHarness !== null
 	if (moduleName === 'common') return typeof dweb.common === 'object' && dweb.common !== null
 	if (moduleName === 'chat') return typeof dweb.chat === 'object' && dweb.chat !== null
 	if (moduleName === 'export') return typeof dweb.export === 'object' && dweb.export !== null

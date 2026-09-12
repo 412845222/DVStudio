@@ -91,7 +91,9 @@ const NODE_COMPONENT_MAP: Record<string, () => Promise<Component>> = {
 	model3d: () => import('../../../ui/WorkFlow/WorlFlowNodes/WorkflowModel3DNode.vue'),
 	meshy: () => import('../../../ui/WorkFlow/WorlFlowNodes/WorkflowMeshyModelNode.vue'),
 	blender: () => import('../../../ui/WorkFlow/WorlFlowNodes/WorkflowBlenderNode.vue'),
-	comfyui: () => import('../../../ui/WorkFlow/WorlFlowNodes/WorkflowComfyUINode.vue')
+	comfyui: () => import('../../../ui/WorkFlow/WorlFlowNodes/WorkflowComfyUINode.vue'),
+	'director-console': () =>
+		import('../../../ui/WorkFlow/WorlFlowNodes/WorkflowDirectorConsoleNode.vue')
 }
 
 const ASYNC_COMPONENT_CACHE = new Map<string, Component>()
@@ -346,6 +348,10 @@ export class NodeComponentResolver {
 				break
 			case 'comfyui':
 				if (data.comfyuiSettings) typeSpecificProps.comfyuiSettings = data.comfyuiSettings
+				break
+			case 'director-console':
+				if (data.directorConsoleSettings)
+					typeSpecificProps.directorConsoleSettings = data.directorConsoleSettings
 				break
 		}
 

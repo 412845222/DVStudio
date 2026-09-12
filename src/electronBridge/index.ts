@@ -17,6 +17,11 @@ import type {
 	UploadedProjectAsset,
 	Open3DEditorPayload,
 	Open3DEditorResult,
+	OpenDirectorConsolePayload,
+	OpenDirectorConsoleResult,
+	DirectorConsoleScenePayload,
+	DirectorConsoleSavePayload,
+	DirectorConsoleModelBinding,
 	OpenVideoEditorPayload,
 	OpenVideoEditorResult,
 	OpenComfySetupPayload,
@@ -279,6 +284,79 @@ export async function uploadProjectAsset(payload: {
 		subPath: payload?.subPath
 	})
 	return result
+}
+
+export async function readProjectAssetText(payload: {
+	projectId: number
+	name?: string
+	subPath?: string
+	projectRelativePath?: string
+}): Promise<{
+	ok: boolean
+	resolved?: boolean
+	text?: string
+	absolutePath?: string
+	projectRelativePath?: string
+	reason?: string
+	error?: string
+} | null> {
+	if (!window?.dweb?.aiworkflow?.readProjectAssetText) return null
+	const pid = Number(payload?.projectId)
+	if (!Number.isFinite(pid) || pid <= 0) return { ok: false, error: 'projectId invalid' }
+	return window.dweb.aiworkflow.readProjectAssetText({
+		projectId: pid,
+		name: payload?.name,
+		subPath: payload?.subPath,
+		projectRelativePath: payload?.projectRelativePath
+	})
+}
+
+export async function writeProjectAssetText(payload: {
+	projectId: number
+	name?: string
+	subPath?: string
+	text: string
+}): Promise<{
+	ok: boolean
+	absolutePath?: string
+	projectRelativePath?: string
+	error?: string
+} | null> {
+	if (!window?.dweb?.aiworkflow?.writeProjectAssetText) return null
+	const pid = Number(payload?.projectId)
+	if (!Number.isFinite(pid) || pid <= 0) return { ok: false, error: 'projectId invalid' }
+	return window.dweb.aiworkflow.writeProjectAssetText({
+		projectId: pid,
+		name: payload?.name,
+		subPath: payload?.subPath,
+		text: payload?.text
+	})
+}
+
+/**
+ * 写入二进制数据到项目资产文件（覆盖写）。
+ * 用于导演控制台截图等二进制资源。
+ */
+export async function writeProjectAssetBinary(payload: {
+	projectId: number
+	name?: string
+	subPath?: string
+	data: Uint8Array | ArrayBuffer | string
+}): Promise<{
+	ok: boolean
+	absolutePath?: string
+	projectRelativePath?: string
+	error?: string
+} | null> {
+	if (!window?.dweb?.aiworkflow?.writeProjectAssetBinary) return null
+	const pid = Number(payload?.projectId)
+	if (!Number.isFinite(pid) || pid <= 0) return { ok: false, error: 'projectId invalid' }
+	return window.dweb.aiworkflow.writeProjectAssetBinary({
+		projectId: pid,
+		name: payload?.name,
+		subPath: payload?.subPath,
+		data: payload?.data
+	})
 }
 
 export async function importProjectAsset(payload: {
@@ -571,6 +649,200 @@ export async function open3DEditor(payload: Open3DEditorPayload): Promise<Open3D
 	}
 }
 
+export async function openDirectorConsole(
+	payload: OpenDirectorConsolePayload
+): Promise<OpenDirectorConsoleResult> {
+	if (!window?.dweb?.window?.openDirectorConsole) {
+		return { ok: false, error: 'Not running in Electron.' }
+	}
+	try {
+		const result = await window.dweb.window.openDirectorConsole(payload)
+		return result || { ok: true }
+	} catch (e: unknown) {
+		return { ok: false, error: getErrorMessage(e) }
+	}
+}
+
+export async function directorConsoleRequestData(payload: {
+	nodeId: string
+}): Promise<{ ok: boolean; data?: DirectorConsoleScenePayload; error?: string }> {
+	if (!window?.dweb?.window?.directorConsoleRequestData) {
+		return { ok: false, error: 'Not running in Electron.' }
+	}
+	try {
+		const result = await window.dweb.window.directorConsoleRequestData(payload || {})
+		return result || { ok: true }
+	} catch (e: unknown) {
+		return { ok: false, error: getErrorMessage(e) }
+	}
+}
+
+export function directorConsolePushData(payload: DirectorConsoleScenePayload): void {
+	try {
+		window?.dweb?.window?.directorConsolePushData?.(payload || {})
+	} catch {
+		/* ignore */
+	}
+}
+
+export function directorConsoleSave(payload: DirectorConsoleSavePayload): void {
+	try {
+		window?.dweb?.window?.directorConsoleSave?.(payload || {})
+	} catch {
+		/* ignore */
+	}
+}
+
+export function onDirectorConsoleData(cb: (payload: DirectorConsoleScenePayload) => void): number {
+	const dweb = window?.dweb
+	if (!dweb?.window?.onDirectorConsoleData) return -1
+	try {
+		return dweb.window.onDirectorConsoleData(cb)
+	} catch {
+		return -1
+	}
+}
+
+export function offDirectorConsoleData(listenerId: number): void {
+	try {
+		window?.dweb?.window?.offDirectorConsoleData?.(listenerId)
+	} catch {
+		/* ignore */
+	}
+}
+
+export function onDirectorConsoleSave(cb: (payload: DirectorConsoleSavePayload) => void): number {
+	const dweb = window?.dweb
+	if (!dweb?.window?.onDirectorConsoleSave) return -1
+	try {
+		return dweb.window.onDirectorConsoleSave(cb)
+	} catch {
+		return -1
+	}
+}
+
+export function offDirectorConsoleSave(listenerId: number): void {
+	try {
+		window?.dweb?.window?.offDirectorConsoleSave?.(listenerId)
+	} catch {
+		/* ignore */
+	}
+}
+
+export function onDirectorConsoleDataRequest(cb: (payload: { nodeId: string }) => void): number {
+	const dweb = window?.dweb
+	if (!dweb?.window?.onDirectorConsoleDataRequest) return -1
+	try {
+		return dweb.window.onDirectorConsoleDataRequest(cb)
+	} catch {
+		return -1
+	}
+}
+
+export function offDirectorConsoleDataRequest(listenerId: number): void {
+	try {
+		window?.dweb?.window?.offDirectorConsoleDataRequest?.(listenerId)
+	} catch {
+		/* ignore */
+	}
+}
+
+// ===== [v5.0] 导演控制台导出视频 =====
+export async function directorConsoleCreateTempDir(): Promise<{
+	ok: boolean
+	jobId?: string
+	dir?: string
+	error?: string
+}> {
+	if (!window?.dweb?.window?.directorConsoleCreateTempDir) {
+		return { ok: false, error: 'Not running in Electron.' }
+	}
+	try {
+		const r = await window.dweb.window.directorConsoleCreateTempDir()
+		return r || { ok: false }
+	} catch (e: unknown) {
+		return { ok: false, error: getErrorMessage(e) }
+	}
+}
+
+export async function directorConsoleWriteFrame(payload: {
+	jobId: string
+	frameIndex: number
+	data: string
+}): Promise<{ ok: boolean; error?: string }> {
+	if (!window?.dweb?.window?.directorConsoleWriteFrame) {
+		return { ok: false, error: 'Not running in Electron.' }
+	}
+	try {
+		const r = await window.dweb.window.directorConsoleWriteFrame(payload)
+		return r || { ok: false }
+	} catch (e: unknown) {
+		return { ok: false, error: getErrorMessage(e) }
+	}
+}
+
+export async function directorConsoleExportVideo(payload: {
+	jobId: string
+	fps: number
+	outputName?: string
+}): Promise<{ ok: boolean; outputPath?: string; error?: string }> {
+	if (!window?.dweb?.window?.directorConsoleExportVideo) {
+		return { ok: false, error: 'Not running in Electron.' }
+	}
+	try {
+		const r = await window.dweb.window.directorConsoleExportVideo(payload)
+		return r || { ok: false }
+	} catch (e: unknown) {
+		return { ok: false, error: getErrorMessage(e) }
+	}
+}
+
+export async function directorConsoleCleanupTempDir(payload: {
+	jobId: string
+}): Promise<{ ok: boolean }> {
+	if (!window?.dweb?.window?.directorConsoleCleanupTempDir) {
+		return { ok: false }
+	}
+	try {
+		const r = await window.dweb.window.directorConsoleCleanupTempDir(payload)
+		return r || { ok: true }
+	} catch {
+		return { ok: false }
+	}
+}
+
+export function directorConsoleNotifyExportDone(payload: {
+	nodeId: string
+	assetUrl?: string
+	assetName?: string
+}): void {
+	try {
+		window?.dweb?.window?.directorConsoleNotifyExportDone?.(payload || {})
+	} catch {
+		/* ignore */
+	}
+}
+
+export function onDirectorConsoleExportDone(
+	cb: (payload: { nodeId: string; assetUrl?: string; assetName?: string }) => void
+): number {
+	const dweb = window?.dweb
+	if (!dweb?.window?.onDirectorConsoleExportDone) return -1
+	try {
+		return dweb.window.onDirectorConsoleExportDone(cb)
+	} catch {
+		return -1
+	}
+}
+
+export function offDirectorConsoleExportDone(listenerId: number): void {
+	try {
+		window?.dweb?.window?.offDirectorConsoleExportDone?.(listenerId)
+	} catch {
+		/* ignore */
+	}
+}
+
 export async function openVideoEditor(
 	payload: OpenVideoEditorPayload
 ): Promise<OpenVideoEditorResult> {
@@ -717,6 +989,13 @@ export async function getWorkshopTemplatesInstallInfo(payload: {
 export type {
 	Open3DEditorPayload,
 	Open3DEditorResult,
+	OpenDirectorConsolePayload,
+	OpenDirectorConsoleResult,
+	DirectorConsoleScenePayload,
+	DirectorConsoleSavePayload,
+	DirectorConsoleModelBinding,
 	OpenVideoEditorPayload,
 	OpenVideoEditorResult
 }
+export { deepseekHarness, hasDeepSeekHarness } from './deepseekHarness'
+export { callComfyRuntime } from './comfyuiRuntime'

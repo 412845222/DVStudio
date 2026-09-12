@@ -9,6 +9,8 @@ import type {
 } from '../../../../ui/UIComponent/BottomChatDock.vue'
 import type { WorkflowAnchorSpec, WorkflowEdge, WorkflowNode } from '../../../../aiworkflow/types'
 import { getAgentChatBridge } from '../../../../network/chat'
+import { deepseekHarness as harnessBridge, hasDeepSeekHarness } from '../../../../electronBridge'
+import { DSHAgentChatService } from '../../../../network/chat/DSHAgentChatService'
 import { getErrorMessage, hasKey, isRecord, isString } from '../../../../types/utils'
 import { getChatModelById } from '../../../../ai/models/chatModels'
 import { t } from '../../../../i18n'
@@ -357,9 +359,12 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 		}
 	}
 
-	const getSourceLabel = (backend: AgentBackendType): 'dvsagent' | 'copilot-cli' | 'codex-cli' => {
+	const getSourceLabel = (
+		backend: AgentBackendType
+	): 'dvsagent' | 'copilot-cli' | 'codex-cli' | 'dshagent' => {
 		if (backend === 'copilot') return 'copilot-cli'
 		if (backend === 'codex') return 'codex-cli'
+		if (backend === 'dshagent') return 'dshagent'
 		return 'dvsagent'
 	}
 
@@ -1158,6 +1163,89 @@ export const useAIWorkflowChatGeneration = (payload: ChatGenerationPayload) => {
 						activeSkills
 					}
 				)
+				return
+			}
+
+			if (backend === 'dshagent') {
+				console.log(
+					'[DSH-Link][workflow] dshagent path entered, hasDeepSeekHarness=',
+					hasDeepSeekHarness()
+				)
+				if (!hasDeepSeekHarness()) {
+					console.error('[DSH-Link][workflow] hasDeepSeekHarness=false, aborting')
+					payload.pushToast('当前环境未启用 DeepSeek-Harness', 'warn')
+					payload.chatRunState.value = 'error'
+					setTaskStatus(t('aiworkflow.toast.aiTaskStartFailed'))
+					return
+				}
+				// 检查服务页管理的 Harness 是否已启动
+				let serviceReady = false
+				let snapshotData: unknown = null
+				try {
+					const snap = await harnessBridge.snapshot()
+					snapshotData = snap
+					const st = snap?.status
+					serviceReady = Boolean(st?.ready && st.lifecycle === 'running' && st.runId)
+					console.log('[DSH-Link][workflow] snapshot status=', st, 'serviceReady=', serviceReady)
+				} catch (snapErr) {
+					console.error('[DSH-Link][workflow] snapshot exception:', snapErr)
+				}
+				if (!serviceReady) {
+					console.error('[DSH-Link][workflow] service not ready, snapshot=', snapshotData)
+					payload.pushToast('DeepSeek-Harness 服务未运行，请先在服务页启动', 'warn')
+					payload.chatRunState.value = 'error'
+					setTaskStatus(t('aiworkflow.toast.aiTaskStartFailed'))
+					return
+				}
+
+				const chatBridge = getAgentChatBridge()
+				const dshService = chatBridge.getService('dshagent') as DSHAgentChatService
+				console.log('[DSH-Link][workflow] got dshService=', !!dshService)
+				// Electron 下走 IPC 代理，baseUrl 仅作为非 Electron 环境的回退值
+				dshService.setBaseUrl('http://127.0.0.1:3080')
+
+				let sessionId = String(payload.codexActiveSessionId.value || '').trim()
+				console.log('[DSH-Link][workflow] existing sessionId=', sessionId || '(none)')
+				if (!sessionId) {
+					setTaskStatus(t('aiworkflow.toast.aiTaskCreating'))
+					console.log('[DSH-Link][workflow] calling chatBridge.createSession dshagent...')
+					const session = await chatBridge.createSession('dshagent', {
+						title: userInput.slice(0, 24),
+						model: payload.chatModelId.value
+					})
+					sessionId = session.id
+					console.log('[DSH-Link][workflow] createSession returned sessionId=', sessionId)
+					payload.codexActiveSessionId.value = sessionId
+					payload.codexSessions.value = [
+						{
+							id: sessionId,
+							title: session.title || t('aiworkflow.page.chat.newConversation'),
+							modelName: session.model || '',
+							status: 'active',
+							source: 'dshagent'
+						},
+						...payload.codexSessions.value.filter((s) => s.id !== sessionId)
+					]
+				}
+
+				const blueprintContext = collectBlueprintContext()
+				const context = {
+					...blueprintContext,
+					referencedNodeIds,
+					referencedOutputs,
+					activeSkills
+				}
+				await handleChatStream('dshagent', content, sessionId, assistantMsg.id, {
+					history,
+					model: payload.chatModelId.value,
+					context,
+					attachments,
+					skillHints,
+					references: toReferences(),
+					referencedNodeIds,
+					referencedOutputs,
+					activeSkills
+				})
 				return
 			}
 

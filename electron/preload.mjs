@@ -15,6 +15,14 @@ function invoke(channel, payload) {
 	return ipcRenderer.invoke(channel, payload)
 }
 
+function onHarnessEvent(action, listener) {
+	if (typeof listener !== 'function') return () => {}
+	const channel = 'dweb:deepseek-harness:setup:' + action
+	const wrapped = (_event, payload) => listener(payload)
+	ipcRenderer.on(channel, wrapped)
+	return () => ipcRenderer.removeListener(channel, wrapped)
+}
+
 const BACKEND_RUNTIME_CHANNEL = 'dweb:backendRuntime:changed'
 const backendRuntimeListenerMap = new Map()
 let backendRuntimeListenerSeed = 0
@@ -245,6 +253,84 @@ ipcRenderer.on(TEMPLATE_CENTER_DATA_CHANNEL, (_event, payload) => {
 	}
 })
 
+// ===== 导演控制台窗口：预注册监听器 + 数据缓存 =====
+// 关键：在 preload 脚本加载时（早于 Vue 挂载）就注册 IPC 监听器
+// 避免主窗口推送数据时 Vue 组件尚未挂载导致消息丢失
+const DIRECTOR_CONSOLE_DATA_CHANNEL = 'dweb:director-console:data'
+const DIRECTOR_CONSOLE_SAVE_CHANNEL = 'dweb:director-console:save'
+const DIRECTOR_CONSOLE_DATA_REQUEST_CHANNEL = 'dweb:director-console:data-request'
+const DIRECTOR_CONSOLE_EXPORT_DONE_CHANNEL = 'dweb:director-console:export-done'
+
+let directorConsoleLatestData = null
+const directorConsoleDataHandlers = new Map()
+let directorConsoleDataListenerSeed = 0
+
+const directorConsoleSaveHandlers = new Map()
+let directorConsoleSaveListenerSeed = 0
+
+const directorConsoleDataRequestHandlers = new Map()
+let directorConsoleDataRequestListenerSeed = 0
+
+const directorConsoleExportDoneHandlers = new Map()
+let directorConsoleExportDoneListenerSeed = 0
+
+ipcRenderer.on(DIRECTOR_CONSOLE_DATA_CHANNEL, (_event, payload) => {
+	try {
+		directorConsoleLatestData = payload
+		for (const handler of directorConsoleDataHandlers.values()) {
+			try {
+				handler(payload)
+			} catch (err) {
+				console.warn('[preload:director-console] data handler error:', err)
+			}
+		}
+	} catch (err) {
+		console.warn('[preload:director-console] failed to process data:', err)
+	}
+})
+
+ipcRenderer.on(DIRECTOR_CONSOLE_SAVE_CHANNEL, (_event, payload) => {
+	try {
+		for (const handler of directorConsoleSaveHandlers.values()) {
+			try {
+				handler(payload)
+			} catch (err) {
+				console.warn('[preload:director-console] save handler error:', err)
+			}
+		}
+	} catch (err) {
+		console.warn('[preload:director-console] failed to process save:', err)
+	}
+})
+
+ipcRenderer.on(DIRECTOR_CONSOLE_DATA_REQUEST_CHANNEL, (_event, payload) => {
+	try {
+		for (const handler of directorConsoleDataRequestHandlers.values()) {
+			try {
+				handler(payload)
+			} catch (err) {
+				console.warn('[preload:director-console] data-request handler error:', err)
+			}
+		}
+	} catch (err) {
+		console.warn('[preload:director-console] failed to process data-request:', err)
+	}
+})
+
+ipcRenderer.on(DIRECTOR_CONSOLE_EXPORT_DONE_CHANNEL, (_event, payload) => {
+	try {
+		for (const handler of directorConsoleExportDoneHandlers.values()) {
+			try {
+				handler(payload)
+			} catch (err) {
+				console.warn('[preload:director-console] export-done handler error:', err)
+			}
+		}
+	} catch (err) {
+		console.warn('[preload:director-console] failed to process export-done:', err)
+	}
+})
+
 // 统一在 preload 注入 baseUrl，避免前端依赖 localStorage/same-origin。
 // 性能优化：IPC 模式下 baseUrl 总是空字符串，无需阻塞等待
 contextBridge.exposeInMainWorld('__DWEB_BACKEND_BASE_URL', '')
@@ -353,7 +439,84 @@ contextBridge.exposeInMainWorld('dweb', {
 		close: () => invoke('dweb:window:close'),
 		open3dEditor: (payload) => invoke('dweb:model3d-editor:open', payload || {}),
 		openVideoEditor: (payload) => invoke('dweb:video-editor:open', payload || {}),
-		openComfySetup: (payload) => invoke('dweb:comfyui-setup:open', payload || {})
+		openComfySetup: (payload) => invoke('dweb:comfyui-setup:open', payload || {}),
+		// ===== 导演控制台原生窗口 =====
+		openDirectorConsole: (payload) => invoke('dweb:director-console:open', payload || {}),
+		directorConsoleRequestData: (payload) =>
+			invoke('dweb:director-console:request-data', payload || {}),
+		directorConsolePushData: (payload) =>
+			ipcRenderer.send('dweb:director-console:data-push', payload || {}),
+		directorConsoleSave: (payload) =>
+			ipcRenderer.send('dweb:director-console:save-relay', payload || {}),
+		getDirectorConsoleData: () => directorConsoleLatestData,
+		onDirectorConsoleData: (handler) => {
+			if (typeof handler !== 'function') return -1
+			const id = ++directorConsoleDataListenerSeed
+			directorConsoleDataHandlers.set(id, handler)
+			// 如果已有缓存数据，立即回调
+			if (directorConsoleLatestData) {
+				try {
+					handler(directorConsoleLatestData)
+				} catch {
+					/* ignore */
+				}
+			}
+			return id
+		},
+		offDirectorConsoleData: (listenerId) => {
+			const id = Number(listenerId || 0)
+			directorConsoleDataHandlers.delete(id)
+			return { ok: true }
+		},
+		onDirectorConsoleSave: (handler) => {
+			if (typeof handler !== 'function') return -1
+			const id = ++directorConsoleSaveListenerSeed
+			directorConsoleSaveHandlers.set(id, handler)
+			return id
+		},
+		offDirectorConsoleSave: (listenerId) => {
+			const id = Number(listenerId || 0)
+			directorConsoleSaveHandlers.delete(id)
+			return { ok: true }
+		},
+		onDirectorConsoleDataRequest: (handler) => {
+			if (typeof handler !== 'function') return -1
+			const id = ++directorConsoleDataRequestListenerSeed
+			directorConsoleDataRequestHandlers.set(id, handler)
+			return id
+		},
+		offDirectorConsoleDataRequest: (listenerId) => {
+			const id = Number(listenerId || 0)
+			directorConsoleDataRequestHandlers.delete(id)
+			return { ok: true }
+		},
+		// [v5.0] 导出视频
+		directorConsoleCreateTempDir: () => invoke('dweb:director-console:create-temp-dir'),
+		directorConsoleWriteFrame: (payload) =>
+			invoke('dweb:director-console:write-frame', payload || {}),
+		directorConsoleExportVideo: (payload) =>
+			invoke('dweb:director-console:export-video', payload || {}),
+		directorConsoleCleanupTempDir: (payload) =>
+			invoke('dweb:director-console:cleanup-temp-dir', payload || {}),
+		directorConsoleNotifyExportDone: (payload) =>
+			ipcRenderer.send('dweb:director-console:export-done-relay', payload || {}),
+		onDirectorConsoleExportDone: (handler) => {
+			if (typeof handler !== 'function') return -1
+			const id = ++directorConsoleExportDoneListenerSeed
+			directorConsoleExportDoneHandlers.set(id, handler)
+			return id
+		},
+		offDirectorConsoleExportDone: (listenerId) => {
+			const id = Number(listenerId || 0)
+			directorConsoleExportDoneHandlers.delete(id)
+			return { ok: true }
+		},
+		directorConsoleCheckDshConfig: (payload) =>
+			invoke('dweb:director-console:check-plugin', payload || {}),
+		directorConsoleWriteDshConfig: (payload) =>
+			invoke('dweb:director-console:install-plugin', payload || {}),
+		directorConsoleCheckModelVision: () => invoke('dweb:director-console:check-model-vision'),
+		directorConsoleFixModelVision: () => invoke('dweb:director-console:fix-model-vision')
 	},
 	projects: {
 		list: () => invoke('dweb:projects:list'),
@@ -381,6 +544,12 @@ contextBridge.exposeInMainWorld('dweb', {
 		importProjectAsset: (payload) => invoke('dweb:aiworkflow:importProjectAsset', payload || {}),
 		deleteProjectAsset: (payload) => invoke('dweb:aiworkflow:deleteProjectAsset', payload || {}),
 		resolveProjectAsset: (payload) => invoke('dweb:aiworkflow:resolveProjectAsset', payload || {}),
+		readProjectAssetText: (payload) =>
+			invoke('dweb:aiworkflow:readProjectAssetText', payload || {}),
+		writeProjectAssetText: (payload) =>
+			invoke('dweb:aiworkflow:writeProjectAssetText', payload || {}),
+		writeProjectAssetBinary: (payload) =>
+			invoke('dweb:aiworkflow:writeProjectAssetBinary', payload || {}),
 		repairProjectAsset: (payload) => invoke('dweb:aiworkflow:repairProjectAsset', payload || {}),
 		diagnoseAsset: (payload) => invoke('dweb:aiworkflow:diagnoseAsset', payload || {}),
 		validateProjectRoot: (payload) => invoke('dweb:aiworkflow:validateProjectRoot', payload || {}),
@@ -752,6 +921,37 @@ contextBridge.exposeInMainWorld('dweb', {
 		recordTask: (payload) => invoke('dweb.ark.recordTask', payload || {})
 	},
 	// ===== ComfyUI =====
+	deepseekHarness: {
+		setup: {
+			listProfiles: () => invoke('dweb:deepseek-harness:setup:list-profiles'),
+			saveProfile: (payload) => invoke('dweb:deepseek-harness:setup:save-profile', payload),
+			removeProfile: (payload) => invoke('dweb:deepseek-harness:setup:remove-profile', payload),
+			activateProfile: (payload) => invoke('dweb:deepseek-harness:setup:activate-profile', payload),
+			selectPath: () => invoke('dweb:deepseek-harness:setup:select-path'),
+			probe: (payload) => invoke('dweb:deepseek-harness:setup:probe', payload),
+			diagnose: (payload) => invoke('dweb:deepseek-harness:setup:diagnose', payload),
+			getServiceStatus: () => invoke('dweb:deepseek-harness:setup:service-status'),
+			getServiceLogs: () => invoke('dweb:deepseek-harness:setup:service-logs'),
+			clearServiceLogs: () => invoke('dweb:deepseek-harness:setup:clear-logs'),
+			startService: (payload) => invoke('dweb:deepseek-harness:setup:start-service', payload),
+			stopService: (payload) => invoke('dweb:deepseek-harness:setup:stop-service', payload),
+			restartService: (payload) => invoke('dweb:deepseek-harness:setup:restart-service', payload),
+			prepare: (payload) =>
+				createIpcStreamGenerator('dweb:deepseek-harness:setup:prepare', payload),
+			autoSetup: (payload) =>
+				createIpcStreamGenerator('dweb:deepseek-harness:setup:auto-setup', payload),
+			cancelPrepare: (payload) => invoke('dweb:deepseek-harness:setup:cancel-prepare', payload),
+			openUi: (payload) => invoke('dweb:deepseek-harness:setup:open-ui', payload),
+			getOpenUrl: (payload) => invoke('dweb:deepseek-harness:setup:get-open-url', payload),
+			proxyCall: (payload) => invoke('dweb:deepseek-harness:setup:proxy-call', payload),
+			dshAgentStream: (payload) => createIpcStreamGenerator('dweb:deepseek-harness:agent', payload),
+			onServiceLog: (listener) => onHarnessEvent('service-log', listener),
+			onServiceStatusChange: (listener) => onHarnessEvent('service-status', listener),
+			onServiceExit: (listener) => onHarnessEvent('service-exit', listener),
+			onServiceLogsCleared: (listener) => onHarnessEvent('service-clear', listener),
+			onConfigChange: (listener) => onHarnessEvent('config-changed', listener)
+		}
+	},
 	comfyui: {
 		// 本地工作流模板 CRUD（操作 LocalDB comfyui_workflows 表）
 		workflows: {
@@ -954,6 +1154,12 @@ contextBridge.exposeInMainWorld('dweb', {
 		listTools: (payload) => invoke('dweb:mcp:list-tools', payload || {}),
 		callTool: (payload) => invoke('dweb:mcp:call-tool', payload || {}),
 		registerBuiltin: (payload) => invoke('dweb:mcp:register-builtin', payload || {}),
+		getStatus: (payload) => invoke('dweb:mcp:get-status', payload || {}),
+		listServers: () => invoke('dweb:mcp:list-servers'),
+		getBridgeStatus: () => invoke('dweb:mcp:get-bridge-status'),
+		getBridgeScriptPath: () => invoke('dweb:mcp:get-bridge-script'),
+		startBridge: () => invoke('dweb:mcp:bridge-start'),
+		stopBridge: () => invoke('dweb:mcp:bridge-stop'),
 		onBuiltinToolCall: (handler) => {
 			if (typeof handler !== 'function') return -1
 			const id = ++builtinToolListenerSeed
@@ -1224,5 +1430,15 @@ contextBridge.exposeInMainWorld('dweb', {
 			backendRuntimeListenerMap.delete(id)
 			return { ok: true }
 		}
+	},
+	cliControlServer: {
+		getStatus: () => invoke('dweb:cli-control:status'),
+		getTask: (payload) => invoke('dweb:cli-control:task:get', payload || {}),
+		listTasks: (payload) => invoke('dweb:cli-control:task:list', payload || {}),
+		markTaskCompleted: (payload) => invoke('dweb:cli-control:task:mark-completed', payload || {}),
+		markTaskFailed: (payload) => invoke('dweb:cli-control:task:mark-failed', payload || {}),
+		acknowledgeTaskMeta: (payload) =>
+			invoke('dweb:cli-control:task:acknowledge-meta', payload || {}),
+		cancelTask: (payload) => invoke('dweb:cli-control:task:cancel', payload || {})
 	}
 })

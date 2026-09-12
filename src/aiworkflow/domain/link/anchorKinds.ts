@@ -305,6 +305,11 @@ export const findBestInputAnchorForOutput = (
 			const semanticMatch = linkableAnchors.find((a) => a.id === 'in-layout-json')
 			if (semanticMatch) return semanticMatch.id
 		}
+		// scene-layout → director-console：优先匹配in-json（布局JSON输入）
+		if (fromType === 'scene-layout' && toType === 'director-console') {
+			const semanticMatch = linkableAnchors.find((a) => a.id === 'in-json')
+			if (semanticMatch) return semanticMatch.id
+		}
 		// scene-understanding → scene-layout：优先匹配in-json（布局JSON输入）
 		if (fromType === 'scene-understanding' && toType === 'scene-layout') {
 			const semanticMatch = linkableAnchors.find((a) => a.id === 'in-json')

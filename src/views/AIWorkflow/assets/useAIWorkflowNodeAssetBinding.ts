@@ -1,6 +1,7 @@
 import type { BlueprintProjectService } from '../../../network/BlueprintProjectService'
 import type { WorkflowResource, WorkflowNode } from '../../../aiworkflow/types'
 import { t } from '../../../i18n'
+import { convertWorkflowResourceToLegacy } from '../blueprint-bridge/workflowStateAdapter'
 
 type UploadedAsset = {
 	url?: string
@@ -79,9 +80,30 @@ export const useAIWorkflowNodeAssetBinding = (options: {
 	 * 可选参数：不传则保持旧行为（不同步引擎），保证向后兼容。
 	 */
 	patchBlueprintNodeData?: (nodeId: string) => void
+	/**
+	 * 资源写穿（P1-1）：Vuex resourcesById 变更后立即同步到引擎 scene._legacyResources，
+	 * 不依赖 Vue 响应式 prop watcher flush 时序，避免引擎序列化空资源表导致 hydrateDraft 清空资源。
+	 */
+	setLegacyResource?: (resourceId: string, resourceData: Record<string, unknown>) => void
 }) => {
 	const imageResourcePersistingIds = new Set<string>()
 	const videoResourcePersistingIds = new Set<string>()
+
+	/** 从 Vuex 读取最新资源并写穿到引擎 */
+	const syncResourceToEngine = (resourceId: string) => {
+		try {
+			const rid = String(resourceId ?? '').trim()
+			if (!rid || !options.setLegacyResource) return
+			const res = options.store.state.resourcesById?.[rid]
+			if (!res) return
+			options.setLegacyResource(
+				rid,
+				convertWorkflowResourceToLegacy(res) as Record<string, unknown>
+			)
+		} catch (err) {
+			console.warn('[AIWorkflow:BindResource] syncResourceToEngine failed:', err)
+		}
+	}
 
 	const shouldUseAnonymousCrossOrigin = (url: string) => {
 		const text = String(url || '').trim()
@@ -136,6 +158,7 @@ export const useAIWorkflowNodeAssetBinding = (options: {
 					projectRelativePath: localizedProjectRelativePath || undefined
 				}
 			})
+			syncResourceToEngine(resourceId)
 
 			const boundNode = options.store.state.nodesById[payload.nodeId]
 			if (boundNode && String(boundNode.resourceId ?? '').trim() === resourceId && localizedPath) {
@@ -196,6 +219,7 @@ export const useAIWorkflowNodeAssetBinding = (options: {
 					projectRelativePath: localizedProjectRelativePath || undefined
 				}
 			})
+			syncResourceToEngine(resourceId)
 
 			const boundNode = options.store.state.nodesById[payload.nodeId]
 			if (boundNode && String(boundNode.resourceId ?? '').trim() === resourceId && localizedPath) {
@@ -270,6 +294,7 @@ export const useAIWorkflowNodeAssetBinding = (options: {
 			...(assetRelPath ? { projectRelativePath: assetRelPath } : {}),
 			createdAt: Date.now()
 		})
+		syncResourceToEngine(resourceId)
 		options.setNodeResourceWithCleanup({
 			nodeId,
 			resourceId,
@@ -398,6 +423,8 @@ export const useAIWorkflowNodeAssetBinding = (options: {
 					createdAt: Date.now()
 				})
 			}
+			// P1-1 资源写穿：model3d 资源（新建或 patch）立即同步引擎资源表
+			syncResourceToEngine(resourceId)
 			options.setNodeResourceWithCleanup({
 				nodeId,
 				resourceId,
@@ -479,6 +506,8 @@ export const useAIWorkflowNodeAssetBinding = (options: {
 				createdAt: Date.now()
 			})
 		}
+		// P1-1 资源写穿：image/video 资源（新建或 patch）立即同步引擎资源表
+		syncResourceToEngine(resourceId)
 		options.setNodeResourceWithCleanup({
 			nodeId,
 			resourceId,

@@ -78,6 +78,7 @@ const emit = defineEmits<{
 	]
 	'node-request-scene-models': [nodeId: string]
 	'node-run-scene-understanding': [nodeId: string]
+	'node-run-director-room': [payload: { nodeId: string; roomId: string }]
 	'node-cancel-scene-understanding': [nodeId: string]
 	'node-run-scene-decompose': [nodeId: string]
 	'node-run-scene-layout': [nodeId: string]
@@ -121,6 +122,7 @@ const emit = defineEmits<{
 	'node-blender-init-workspace': [payload: { nodeId: string }]
 	'node-update-blender-settings': [payload: { nodeId: string; patch: Record<string, any> }]
 	'node-blender-compress-context': [payload: { nodeId: string }]
+	'node-open-director-console': [payload: { nodeId: string }]
 }>()
 
 const blueprintEditorRef = ref<InstanceType<typeof BlueprintEditor> | null>(null)
@@ -458,6 +460,7 @@ watch(
 			"
 			@node-request-scene-models="(id: string) => emit('node-request-scene-models', id)"
 			@node-run-scene-understanding="(id: string) => emit('node-run-scene-understanding', id)"
+			@node-run-director-room="(p: any) => emit('node-run-director-room', p)"
 			@node-cancel-scene-understanding="(id: string) => emit('node-cancel-scene-understanding', id)"
 			@node-run-scene-decompose="(id: string) => emit('node-run-scene-decompose', id)"
 			@node-run-scene-layout="(id: string) => emit('node-run-scene-layout', id)"
@@ -507,6 +510,7 @@ watch(
 			@node-blender-init-workspace="(p: any) => emit('node-blender-init-workspace', p)"
 			@node-update-blender-settings="(p: any) => emit('node-update-blender-settings', p)"
 			@node-blender-compress-context="(p: any) => emit('node-blender-compress-context', p)"
+			@node-open-director-console="(p: any) => emit('node-open-director-console', p)"
 		/>
 		<div class="bp-overlay-layer">
 			<slot />

@@ -1,4 +1,5 @@
 import { t } from '../../../i18n'
+import { convertWorkflowResourceToLegacy } from '../blueprint-bridge/workflowStateAdapter'
 
 type FileWithPath = File & {
 	path?: string
@@ -48,10 +49,18 @@ export type AIWorkflowDroppedFile = {
 export const useAIWorkflowBatchMediaImport = (options: {
 	store: AIWorkflowStore
 	engineApi?: {
-		addNode?: (type: string, x: number, y: number, data?: Record<string, any>) => string | null
+		addNode?: (
+			type: string,
+			x: number,
+			y: number,
+			data?: Record<string, any>,
+			opts?: { silent?: boolean; skipEditMode?: boolean }
+		) => string | null
 		updateNodeData?: (nodeId: string, patch: Record<string, any>) => boolean
 		setSelection?: (nodeIds: string[]) => void
 		forceSyncToStore?: () => Promise<boolean>
+		setLegacyResource?: (resourceId: string, resourceData: Record<string, any>) => void
+		getNode?: (nodeId: string) => Record<string, any> | null
 	}
 	makeResourceId: () => string
 	maxBatchImportMediaCount: number
@@ -215,6 +224,23 @@ export const useAIWorkflowBatchMediaImport = (options: {
 		return null
 	}
 
+	/**
+	 * 资源写穿：Vuex resourcesById 变更后立即同步到引擎 scene._legacyResources。
+	 * 不依赖 Vue 响应式 prop watcher 的 flush 时序，保证 forceSyncToStore/serializeLegacy
+	 * 在任何时刻序列化引擎都能拿到资源，避免 hydrateDraft 误判「空快照」而清空资源。
+	 */
+	const syncResourceToEngine = (resourceId: string) => {
+		try {
+			const rid = String(resourceId ?? '').trim()
+			if (!rid) return
+			const res = (options.store.state as any).resourcesById?.[rid]
+			if (!res) return
+			options.engineApi?.setLegacyResource?.(rid, convertWorkflowResourceToLegacy(res))
+		} catch (err) {
+			console.warn('[AIWorkflow:MediaImport] syncResourceToEngine failed:', err)
+		}
+	}
+
 	const createMediaNodesFromFiles = async (opts: {
 		files: AIWorkflowDroppedFile[]
 		worldX: number
@@ -312,6 +338,9 @@ export const useAIWorkflowBatchMediaImport = (options: {
 					: undefined,
 				createdAt: Date.now()
 			})
+			// P1-1 资源写穿：节点创建阶段即把资源（即使 url 暂空）同步给引擎，
+			// 防止 forceSyncToStore 抢先序列化空资源表导致 hydrateDraft 清空资源
+			syncResourceToEngine(resourceId)
 
 			const nodeType = item.kind === 'model3d' ? 'model3d' : item.kind
 			const title =
@@ -350,11 +379,17 @@ export const useAIWorkflowBatchMediaImport = (options: {
 				})
 			}
 
+			// 批量创建时使用 silent + skipEditMode：
+			// 1. 避免6次 enterEditMode 设置 editingNodeId，导致 applyInitialData 被阻止
+			//    （applyInitialData 检查 editingNodeId，非空时直接 return，不执行 loadBlueprint）
+			// 2. 避免6次 emitChange 的防抖竞争
+			// 3. 批量创建后统一 setSelection + forceSyncToStore 同步
 			let nodeId: string | null | undefined = options.engineApi?.addNode?.(
 				nodeType,
 				worldX,
 				worldY,
-				nodeCreateData
+				nodeCreateData,
+				{ silent: true, skipEditMode: true }
 			)
 			console.log('[AIWorkflow:MediaImport] addNode result:', {
 				nodeType,
@@ -364,6 +399,43 @@ export const useAIWorkflowBatchMediaImport = (options: {
 			})
 			const usedEngine = Boolean(nodeId)
 			if (usedEngine) anyUsedEngine = true
+
+			// P3 直接同步（核心修复）：addNode 成功后立即通过 getNode 获取引擎节点数据，
+			// 直接 upsert 到 store。这完全绕过 forceSyncToStore 的时序依赖，
+			// 确保节点在 store 中立即可用，后续图片结果回调时不会出现 "node not yet in store"
+			if (nodeId && options.engineApi?.getNode) {
+				try {
+					const engineNode = options.engineApi.getNode(nodeId)
+					if (engineNode) {
+						// BlueprintNode 对象的纯数据在 .data 属性中
+						const nodeData =
+							(engineNode as any)?.data && typeof (engineNode as any).data === 'object'
+								? (engineNode as any).data
+								: engineNode
+						// 确保 nodeData 有 id 字段
+						if (!(nodeData as any).id) (nodeData as any).id = nodeId
+						if (!(nodeData as any).type) (nodeData as any).type = nodeType
+						options.store.commit('upsertWorkflowNode', { node: nodeData })
+						console.log(
+							'[AIWorkflow:MediaImport] Immediately upserted node to store:',
+							nodeId,
+							'inStore:',
+							!!options.store.state.nodesById[nodeId]
+						)
+					} else {
+						console.warn(
+							'[AIWorkflow:MediaImport] engineApi.getNode returned null immediately after addNode:',
+							nodeId
+						)
+					}
+				} catch (upsertErr) {
+					console.warn(
+						'[AIWorkflow:MediaImport] Immediate upsert failed for node:',
+						nodeId,
+						upsertErr
+					)
+				}
+			}
 			if (!nodeId) {
 				options.store.commit('addNodeAt', {
 					worldX,
@@ -416,13 +488,70 @@ export const useAIWorkflowBatchMediaImport = (options: {
 					createdNodeIds.length
 				)
 				try {
-					const syncOk = await options.engineApi.forceSyncToStore()
+					let syncOk = await options.engineApi.forceSyncToStore()
 					console.log('[AIWorkflow:MediaImport] forceSyncToStore result:', syncOk)
 					// 验证所有节点是否已在store中
-					const missingNodes = createdNodeIds.filter((id) => !options.store.state.nodesById[id])
-					if (missingNodes.length > 0) {
+					let missingNodes = createdNodeIds.filter((id) => !options.store.state.nodesById[id])
+
+					// P2 兜底：如果 forceSyncToStore 后节点仍然不在 store 中，重试最多3次
+					let retryCount = 0
+					while (missingNodes.length > 0 && retryCount < 3) {
+						retryCount++
 						console.warn(
-							'[AIWorkflow:MediaImport] After forceSync, nodes still missing from store:',
+							`[AIWorkflow:MediaImport] forceSync retry ${retryCount}/3, missing nodes:`,
+							missingNodes
+						)
+						await new Promise<void>((resolve) => setTimeout(resolve, 100))
+						try {
+							await options.engineApi.forceSyncToStore()
+						} catch (retryErr) {
+							console.warn('[AIWorkflow:MediaImport] forceSync retry error:', retryErr)
+						}
+						missingNodes = createdNodeIds.filter((id) => !options.store.state.nodesById[id])
+					}
+
+					// P2 终极兜底：如果重试后节点仍然不在 store 中，通过 engineApi.getNode 获取引擎节点数据，
+					// 手动 upsert 到 store。这确保节点一定在 store 中，即使 forceSyncToStore/hydrateDraft 时序失败
+					if (missingNodes.length > 0 && options.engineApi?.getNode) {
+						console.warn(
+							'[AIWorkflow:MediaImport] forceSync failed after retries, manually upserting nodes from engine:',
+							missingNodes
+						)
+						for (const nodeId of missingNodes) {
+							try {
+								const engineNode = options.engineApi.getNode(nodeId)
+								if (engineNode) {
+									// BlueprintNode 对象的纯数据在 .data 属性中（见 BlueprintScene.serialize）
+									// 如果返回的对象有 .data 属性，取 .data；否则直接用对象本身
+									const nodeData =
+										(engineNode as any)?.data && typeof (engineNode as any).data === 'object'
+											? (engineNode as any).data
+											: engineNode
+									options.store.commit('upsertWorkflowNode', { node: nodeData })
+									console.log(
+										'[AIWorkflow:MediaImport] Manually upserted node from engine data:',
+										nodeId
+									)
+								} else {
+									console.warn(
+										'[AIWorkflow:MediaImport] engineApi.getNode returned null for:',
+										nodeId
+									)
+								}
+							} catch (upsertErr) {
+								console.error(
+									'[AIWorkflow:MediaImport] Manual upsert failed for node:',
+									nodeId,
+									upsertErr
+								)
+							}
+						}
+					}
+
+					missingNodes = createdNodeIds.filter((id) => !options.store.state.nodesById[id])
+					if (missingNodes.length > 0) {
+						console.error(
+							'[AIWorkflow:MediaImport] Nodes still missing from store after all fallbacks:',
 							missingNodes
 						)
 					} else {
@@ -522,6 +651,7 @@ export const useAIWorkflowBatchMediaImport = (options: {
 						...(projectAbsPath ? { absolutePath: projectAbsPath } : {})
 					}
 				})
+				syncResourceToEngine(task.resourceId)
 
 				// 使用bindMediaResourceToNode绑定3D模型资源
 				if (options.bindMediaResourceToNode) {
@@ -700,6 +830,7 @@ export const useAIWorkflowBatchMediaImport = (options: {
 						...(projectRelPath ? { projectRelativePath: projectRelPath } : {})
 					}
 				})
+				syncResourceToEngine(task.resourceId)
 				console.log('[AIWorkflow:MediaImport] Video task prepared:', {
 					resourceId: task.resourceId,
 					nodeId: info.nodeId,
@@ -840,6 +971,8 @@ export const useAIWorkflowBatchMediaImport = (options: {
 								patch: { sourcePath: result.sourcePath }
 							})
 						}
+						// P1-1 资源写穿：缩略结果回补 URL/路径后立即同步引擎
+						syncResourceToEngine(result.resourceId)
 
 						const info = resourceIdToNode.get(result.resourceId)
 						if (!info) {

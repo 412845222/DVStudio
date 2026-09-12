@@ -105,6 +105,7 @@ class ToolExecutor {
 	 * @param {object} options - 调用选项
 	 * @param {string} options.requestId - 自定义请求ID
 	 * @param {boolean} options.skipFrontend - 如果工具在进程内有handler，跳过前端IPC
+	 * @param {number} options.timeoutMs - 自定义IPC超时（毫秒），默认 TOOL_TIMEOUT_MS
 	 * @returns {Promise<object>} 工具执行结果
 	 */
 	async callTool(name, args = {}, options = {}) {
@@ -126,13 +127,15 @@ class ToolExecutor {
 			}
 		}
 
-		return this.callToolViaIPC(name, args, requestId)
+		return this.callToolViaIPC(name, args, requestId, options.timeoutMs)
 	}
 
 	/**
 	 * 通过IPC调用前端工具
+	 * @param {number} [customTimeoutMs] - 自定义超时毫秒
 	 */
-	callToolViaIPC(toolName, args, requestId) {
+	callToolViaIPC(toolName, args, requestId, customTimeoutMs) {
+		const effectiveTimeout = customTimeoutMs || TOOL_TIMEOUT_MS
 		return new Promise((resolve, reject) => {
 			const responseChannel = `${TOOL_RESPONSE_CHANNEL_PREFIX}${requestId}:response`
 			let timeout = null
@@ -153,8 +156,8 @@ class ToolExecutor {
 
 			timeout = setTimeout(() => {
 				cleanup()
-				reject(new Error(`Tool ${toolName} timed out after ${TOOL_TIMEOUT_MS}ms`))
-			}, TOOL_TIMEOUT_MS)
+				reject(new Error(`Tool ${toolName} timed out after ${effectiveTimeout}ms`))
+			}, effectiveTimeout)
 
 			const handler = (_event, response) => {
 				cleanup()

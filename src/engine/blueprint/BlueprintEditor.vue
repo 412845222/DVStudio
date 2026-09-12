@@ -69,6 +69,7 @@
 				"
 				@node-request-scene-models="(id: string) => emit('nodeRequestSceneModels', id)"
 				@node-run-scene-understanding="(id: string) => emit('nodeRunSceneUnderstanding', id)"
+				@node-run-director-room="(p: any) => emit('nodeRunDirectorRoom', p)"
 				@node-cancel-scene-understanding="(id: string) => emit('nodeCancelSceneUnderstanding', id)"
 				@node-run-scene-decompose="(id: string) => emit('nodeRunSceneDecompose', id)"
 				@node-run-scene-layout="(id: string) => emit('nodeRunSceneLayout', id)"
@@ -114,6 +115,7 @@
 				@node-blender-init-workspace="(p: any) => emit('nodeBlenderInitWorkspace', p)"
 				@node-update-blender-settings="(p: any) => emit('nodeUpdateBlenderSettings', p)"
 				@node-blender-compress-context="(p: any) => emit('nodeBlenderCompressContext', p)"
+				@node-open-director-console="(p: any) => emit('nodeOpenDirectorConsole', p)"
 				@interaction-end="emitChange"
 			/>
 			<slot></slot>
@@ -237,6 +239,7 @@ interface Emits {
 	): void
 	(e: 'nodeRequestSceneModels', nodeId: string): void
 	(e: 'nodeRunSceneUnderstanding', nodeId: string): void
+	(e: 'nodeRunDirectorRoom', payload: { nodeId: string; roomId: string }): void
 	(e: 'nodeCancelSceneUnderstanding', nodeId: string): void
 	(e: 'nodeRunSceneDecompose', nodeId: string): void
 	(e: 'nodeRunSceneLayout', nodeId: string): void
@@ -287,6 +290,7 @@ interface Emits {
 	(e: 'nodeBlenderInitWorkspace', payload: { nodeId: string }): void
 	(e: 'nodeUpdateBlenderSettings', payload: { nodeId: string; patch: Record<string, any> }): void
 	(e: 'nodeBlenderCompressContext', payload: { nodeId: string }): void
+	(e: 'nodeOpenDirectorConsole', payload: { nodeId: string }): void
 }
 
 const emit = defineEmits<Emits>()

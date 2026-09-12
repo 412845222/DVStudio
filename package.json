@@ -35,6 +35,9 @@
 	"engines": {
 		"node": ">=16"
 	},
+	"bin": {
+		"dvs-cli": "./build/bin/dvs-cli.cmd"
+	},
 	"type": "module",
 	"scripts": {
 		"dev": "node scripts/clean-ports.mjs 5173 && vite",
@@ -102,7 +105,10 @@
 		"format:check": "prettier --check \"src/**/*.{ts,vue,css,json}\" \"electron/**/*.{mjs,js,json}\" \"scripts/**/*.{mjs,js}\"",
 		"quality": "npm run typecheck && npm run test:architecture && npm run test",
 		"quality:full": "npm run typecheck && npm run lint && npm run test:architecture && npm run test",
-		"release": "node scripts/release.mjs"
+		"release": "node scripts/release.mjs",
+		"cli": "node electron/backend/modules/cli-control-server/cli.mjs",
+		"cli:help": "node electron/backend/modules/cli-control-server/cli.mjs help",
+		"cli:status": "node electron/backend/modules/cli-control-server/cli.mjs status"
 	},
 	"dependencies": {
 		"@modelcontextprotocol/sdk": "^1.29.0",
@@ -118,7 +124,8 @@
 		"three-bvh-csg": "^0.0.18",
 		"vue": "^3.2.41",
 		"vue-router": "^4.5.0",
-		"vuex": "^4.1.0"
+		"vuex": "^4.1.0",
+		"ws": "^8.21.0"
 	},
 	"devDependencies": {
 		"@electron/rebuild": "^3.6.2",
@@ -170,6 +177,15 @@
 		],
 		"extraResources": [
 			{
+				"from": "dsh-plugins",
+				"to": "dsh-plugins",
+				"filter": [
+					"**/*",
+					"!**/node_modules/**",
+					"!**/dist/**"
+				]
+			},
+			{
 				"from": "electron/backend/python-bridge/scripts",
 				"to": "python-bridge-scripts"
 			},
@@ -186,6 +202,14 @@
 				"to": "runtime",
 				"filter": [
 					"**/*"
+				]
+			},
+			{
+				"from": "build/bin",
+				"to": "bin",
+				"filter": [
+					"**/*.cmd",
+					"**/*.ps1"
 				]
 			}
 		],

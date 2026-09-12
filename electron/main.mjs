@@ -38,7 +38,9 @@ import {
 	diagnoseDwebAsset,
 	getAccessLogs,
 	getProjectCacheStats,
-	clearProjectCache
+	clearProjectCache,
+	writeProjectAssetText,
+	writeProjectAssetBinary
 } from './backend/projectAssetProtocol.mjs'
 import {
 	uploadBufferProjectAsset,
@@ -46,12 +48,21 @@ import {
 	importFileProjectAsset,
 	deleteStaticProjectAsset,
 	resolveStaticProjectAsset,
+	readStaticProjectAssetText,
 	repairAllProjectAssets
 } from './backend/projectStaticAssets/service.mjs'
 import { initLocalDb, getRepos, getReposSafe, ensureLocalDbInitialized } from './localdb/index.mjs'
 import { registerLocalDbIpc } from './localdb/ipc/ipcHost.mjs'
-import { initBackend, shutdownBackend } from './backend/index.mjs'
+import { initBackend, shutdownBackend, disposeDeepSeekHarness } from './backend/index.mjs'
 import { getPythonBridge } from './backend/python-bridge/index.mjs'
+import { getDirectorPipeServer } from './backend/modules/mcp/server/directorPipeServer.mjs'
+import { startDirectorHttpServer } from './backend/modules/mcp/server/directorHttpServer.mjs'
+import {
+	getBundledScriptPath,
+	getNodeExecutablePath,
+	getBundledPluginPath,
+	getBundledSyncScriptPath
+} from './backend/core/resourcePaths.mjs'
 import {
 	platformPreflight,
 	platformInit,
@@ -1229,6 +1240,7 @@ function registerIpc() {
 	ipcMain.handle('dweb:backend:restart', async () => {
 		return withBackendOpLock(async () => {
 			try {
+				await disposeDeepSeekHarness()
 				shutdownBackend()
 				const setupResult = await runSetupWorkflow({ reason: 'manual-restart' })
 				if (!setupResult.ok) {
@@ -1503,6 +1515,31 @@ function registerIpc() {
 	ipcMain.handle('dweb:aiworkflow:resolveProjectAsset', async (_e, payload) => {
 		try {
 			return resolveStaticProjectAsset(payload || {})
+		} catch (err) {
+			return { ok: false, error: String(err?.message || err) }
+		}
+	})
+
+	ipcMain.handle('dweb:aiworkflow:readProjectAssetText', async (_e, payload) => {
+		try {
+			return readStaticProjectAssetText(payload || {})
+		} catch (err) {
+			return { ok: false, error: String(err?.message || err) }
+		}
+	})
+
+	ipcMain.handle('dweb:aiworkflow:writeProjectAssetText', async (_e, payload) => {
+		try {
+			return writeProjectAssetText(payload || {})
+		} catch (err) {
+			return { ok: false, error: String(err?.message || err) }
+		}
+	})
+
+	// 写入二进制项目资产（覆盖写，用于导演控制台截图等）
+	ipcMain.handle('dweb:aiworkflow:writeProjectAssetBinary', async (_e, payload) => {
+		try {
+			return writeProjectAssetBinary(payload || {})
 		} catch (err) {
 			return { ok: false, error: String(err?.message || err) }
 		}
@@ -2153,6 +2190,750 @@ function registerIpc() {
 		}
 	})
 
+	// ===== 导演控制台窗口 =====
+	let directorConsoleWindow = null
+	let directorConsoleLatestData = null
+
+	ipcMain.handle('dweb:director-console:open', async (_e, payload) => {
+		console.log('[main] dweb:director-console:open payload:', JSON.stringify(payload))
+		try {
+			const nodeId = String(payload?.nodeId || '')
+			const title = String(payload?.title || '导演控制台').slice(0, 200)
+			const projectId = payload?.projectId
+
+			if (!nodeId) {
+				return { ok: false, error: 'missing nodeId' }
+			}
+
+			if (directorConsoleWindow && !directorConsoleWindow.isDestroyed()) {
+				directorConsoleWindow.focus()
+				// 确保窗口引用已注册到 pipeServer，防止重启 pipeServer 后丢失
+				try {
+					getDirectorPipeServer().setDirectorConsoleWindow(directorConsoleWindow)
+				} catch {
+					/* 忽略 */
+				}
+				return { ok: true, focused: true }
+			}
+
+			const here = path.dirname(fileURLToPath(import.meta.url))
+			const repoRoot = path.resolve(here, '..')
+			const devUrl = String(process.env.ELECTRON_RENDERER_URL || 'http://localhost:5173/').replace(
+				/\/+$/,
+				''
+			)
+
+			const queryParts = []
+			queryParts.push('nodeId=' + encodeURIComponent(nodeId))
+			if (projectId != null) {
+				queryParts.push('projectId=' + encodeURIComponent(String(projectId)))
+			}
+			queryParts.push('title=' + encodeURIComponent(title))
+			const queryStr = queryParts.length > 0 ? '?' + queryParts.join('&') : ''
+
+			const targetUrl = isDev
+				? devUrl + '/#/director-console' + queryStr
+				: 'file://' +
+					path.resolve(repoRoot, 'dist', 'index.html').replace(/\\/g, '/') +
+					'#/director-console' +
+					queryStr
+
+			console.log('[main][director-console] targetUrl:', targetUrl)
+
+			directorConsoleWindow = new BrowserWindow({
+				width: 1600,
+				height: 950,
+				minWidth: 1200,
+				minHeight: 760,
+				title: APP_NAME + ' · ' + title,
+				icon: getWindowIconPath(),
+				backgroundColor: '#0a0f18',
+				frame: false,
+				autoHideMenuBar: true,
+				webPreferences: {
+					preload: path.resolve(here, 'preload.mjs'),
+					contextIsolation: true,
+					nodeIntegration: false,
+					sandbox: false,
+					disableDialogs: true
+				}
+			})
+
+			try {
+				directorConsoleWindow.setMenuBarVisibility(false)
+			} catch {}
+			try {
+				directorConsoleWindow.removeMenu()
+			} catch {}
+
+			if (mainWindow && !mainWindow.isDestroyed()) {
+				const [mainX, mainY] = mainWindow.getPosition()
+				directorConsoleWindow.setPosition(mainX + 80, mainY + 80)
+			}
+
+			directorConsoleWindow.webContents.on(
+				'console-message',
+				(_event, level, message, line, sourceId) => {
+					if (sourceId?.startsWith('devtools://')) return
+					appendRuntimeLog(
+						'[director-console:' + level + '] ' + message + ' (' + sourceId + ':' + line + ')'
+					)
+				}
+			)
+			directorConsoleWindow.webContents.on(
+				'did-fail-load',
+				(_event, errorCode, errorDescription, validatedURL) => {
+					appendRuntimeLog(
+						'[director-console:fail-load] code=' +
+							errorCode +
+							' desc=' +
+							errorDescription +
+							' url=' +
+							validatedURL
+					)
+				}
+			)
+			directorConsoleWindow.on('closed', () => {
+				directorConsoleWindow = null
+				// 清空 pipeServer 的导演控制台窗口引用，dc_* 工具调用
+				// 将回退到 mainWindow 或广播兜底
+				try {
+					getDirectorPipeServer().setDirectorConsoleWindow(null)
+				} catch {
+					/* 忽略 */
+				}
+			})
+
+			await directorConsoleWindow.loadURL(targetUrl)
+			console.log(
+				'[main][director-console] loadURL done, URL:',
+				directorConsoleWindow.webContents.getURL()
+			)
+			// 把导演控制台窗口注册为 dc_* 工具调用的目标窗口
+			// 这样 DSH 插件的 dc_get_scene_state 等请求会直接路由到
+			// 该窗口的 DirectorConsoleToolHandler，而不是被主窗口的
+			// useAgentToolBridge 误判为 "Unknown tool"
+			try {
+				getDirectorPipeServer().setDirectorConsoleWindow(directorConsoleWindow)
+			} catch {
+				/* 忽略 */
+			}
+			if (isDev) {
+				directorConsoleWindow.webContents.openDevTools({ mode: 'detach', activate: false })
+			}
+			return { ok: true, focused: false }
+		} catch (err) {
+			console.error('[main][director-console] open failed', err)
+			return { ok: false, error: String(err?.message || err) }
+		}
+	})
+
+	ipcMain.handle('dweb:director-console:request-data', async (_e, payload) => {
+		try {
+			if (mainWindow && !mainWindow.isDestroyed()) {
+				mainWindow.webContents.send('dweb:director-console:data-request', payload || {})
+			}
+			return { ok: true, data: directorConsoleLatestData }
+		} catch (err) {
+			return { ok: false, error: String(err?.message || err) }
+		}
+	})
+
+	ipcMain.on('dweb:director-console:data-push', (_e, payload) => {
+		directorConsoleLatestData = payload
+		if (!directorConsoleWindow || directorConsoleWindow.isDestroyed()) {
+			return
+		}
+		try {
+			directorConsoleWindow.webContents.send('dweb:director-console:data', payload)
+		} catch (err) {
+			console.warn('[main][director-console] data-push relay failed:', err)
+		}
+	})
+
+	ipcMain.on('dweb:director-console:save-relay', (_e, payload) => {
+		if (!mainWindow || mainWindow.isDestroyed()) {
+			return
+		}
+		try {
+			mainWindow.webContents.send('dweb:director-console:save', payload)
+		} catch (err) {
+			console.warn('[main][director-console] save relay failed:', err)
+		}
+	})
+
+	// ===== [v5.0] 导演控制台导出视频 =====
+	// 管理导出用的临时目录（按 jobId 隔离）
+	const directorExportTempDirs = new Map()
+
+	ipcMain.handle('dweb:director-console:create-temp-dir', async () => {
+		try {
+			const jobId = 'dc-export-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8)
+			const tmpRoot = path.join(os.tmpdir(), 'dvstudio-director-export')
+			await fs.promises.mkdir(tmpRoot, { recursive: true })
+			const dir = path.join(tmpRoot, jobId)
+			await fs.promises.mkdir(dir, { recursive: true })
+			directorExportTempDirs.set(jobId, dir)
+			return { ok: true, jobId, dir }
+		} catch (err) {
+			console.error('[main][director-console] create-temp-dir failed:', err)
+			return { ok: false, error: String(err?.message || err) }
+		}
+	})
+
+	ipcMain.handle('dweb:director-console:write-frame', async (_e, payload) => {
+		try {
+			const { jobId, frameIndex, data } = payload || {}
+			const dir = directorExportTempDirs.get(String(jobId || ''))
+			if (!dir) return { ok: false, error: 'invalid jobId' }
+			// data 为 base64 字符串
+			const buf = Buffer.from(String(data || ''), 'base64')
+			const fname = 'frame_' + String(frameIndex).padStart(6, '0') + '.png'
+			await fs.promises.writeFile(path.join(dir, fname), buf)
+			return { ok: true }
+		} catch (err) {
+			console.error('[main][director-console] write-frame failed:', err)
+			return { ok: false, error: String(err?.message || err) }
+		}
+	})
+
+	ipcMain.handle('dweb:director-console:export-video', async (_e, payload) => {
+		const { jobId, fps, outputName } = payload || {}
+		const dir = directorExportTempDirs.get(String(jobId || ''))
+		if (!dir) return { ok: false, error: 'invalid jobId' }
+		const hasFfmpeg = await checkFfmpegAvailable()
+		if (!hasFfmpeg) return { ok: false, error: 'ffmpeg not available' }
+		const outputPath = path.join(dir, String(outputName || 'output.mp4'))
+		const inputPattern = path.join(dir, 'frame_%06d.png')
+		return new Promise((resolve) => {
+			const args = [
+				'-y',
+				'-framerate',
+				String(Math.max(1, Math.floor(Number(fps) || 30))),
+				'-i',
+				inputPattern,
+				'-c:v',
+				'libx264',
+				'-preset',
+				'medium',
+				'-crf',
+				'23',
+				'-pix_fmt',
+				'yuv420p',
+				'-movflags',
+				'+faststart',
+				outputPath
+			]
+			console.log('[main][director-console] ffmpeg args:', JSON.stringify(args))
+			const proc = spawn('ffmpeg', args, { windowsHide: true })
+			let stderr = ''
+			proc.stderr?.on('data', (chunk) => {
+				stderr += String(chunk)
+			})
+			proc.on('error', (err) => {
+				resolve({ ok: false, error: String(err?.message || err) })
+			})
+			proc.on('close', (code) => {
+				if (code === 0) {
+					resolve({ ok: true, outputPath })
+				} else {
+					console.error('[main][director-console] ffmpeg failed:', stderr.slice(-500))
+					resolve({ ok: false, error: 'ffmpeg exited with code ' + code })
+				}
+			})
+		})
+	})
+
+	ipcMain.handle('dweb:director-console:cleanup-temp-dir', async (_e, payload) => {
+		const { jobId } = payload || {}
+		const dir = directorExportTempDirs.get(String(jobId || ''))
+		if (!dir) return { ok: true }
+		try {
+			await fs.promises.rm(dir, { recursive: true, force: true })
+		} catch (err) {
+			console.warn('[main][director-console] cleanup-temp-dir failed:', err)
+		}
+		directorExportTempDirs.delete(String(jobId || ''))
+		return { ok: true }
+	})
+
+	ipcMain.on('dweb:director-console:export-done-relay', (_e, payload) => {
+		if (!mainWindow || mainWindow.isDestroyed()) return
+		try {
+			mainWindow.webContents.send('dweb:director-console:export-done', payload)
+		} catch (err) {
+			console.warn('[main][director-console] export-done relay failed:', err)
+		}
+	})
+
+	// ===== 导演控制台 Pipe/HTTP Server 启动 =====
+	// Pipe Server 在后端初始化时由 initMCPModule() 启动。
+	// 这里启动 HTTP fallback server 并设置 mainWindow 引用。
+	{
+		const pipeServer = getDirectorPipeServer()
+		pipeServer.setMainWindow(mainWindow)
+		// HTTP server 是 async 的，用 IIFE 启动
+		;(async () => {
+			const httpResult = await startDirectorHttpServer(mainWindow, pipeServer)
+			if (httpResult?.port) {
+				pipeServer.setHttpPort(httpResult.port)
+				// 保存 HTTP server 引用，应用退出时由 pipeServer.stop() 统一关闭
+				pipeServer.setHttpServer(httpResult.server)
+				// 重新写入配置文件（包含正确的 httpPort）
+				pipeServer.writeDirectorConfig(
+					process.platform === 'win32'
+						? '\\\\.\\pipe\\dvstudio-director'
+						: path.join(os.tmpdir(), 'dvstudio-director.sock'),
+					httpResult.port
+				)
+				console.log(`[DirectorConsole] HTTP fallback server started on port ${httpResult.port}`)
+			} else {
+				console.warn('[DirectorConsole] HTTP fallback server failed to start:', httpResult?.error)
+			}
+		})()
+	}
+
+	// ===== 导演控制台 Agent 环境检查 IPC =====
+	// fs/path 已在文件顶部导入；getDirectorPipeServer / getBundledPluginPath / getBundledSyncScriptPath
+	// 已在文件顶部通过常规 import 引入，避免顶层 await 导致 SyntaxError。
+
+	ipcMain.handle('dweb:mcp:bridge-start', async () => {
+		try {
+			const bridge = getDirectorPipeServer()
+			const before = bridge.getStatus?.()
+			if (before?.isRunning) {
+				return { ok: true, status: before, alreadyRunning: true }
+			}
+			bridge.start(0)
+			for (let i = 0; i < 20; i++) {
+				await new Promise((r) => setTimeout(r, 100))
+				const after = bridge.getStatus?.()
+				if (after?.isRunning) {
+					return { ok: true, status: after }
+				}
+			}
+			const final = bridge.getStatus?.()
+			return { ok: !!final?.isRunning, status: final }
+		} catch (err) {
+			return { ok: false, error: err.message }
+		}
+	})
+
+	ipcMain.handle('dweb:mcp:bridge-stop', async () => {
+		try {
+			const bridge = getDirectorPipeServer()
+			bridge.stop()
+			return { ok: true }
+		} catch (err) {
+			return { ok: false, error: err.message }
+		}
+	})
+
+	// ===== 导演控制台 DSH 插件安装 IPC =====
+	ipcMain.handle('dweb:director-console:check-plugin', async (_e, payload) => {
+		try {
+			const localPath = String(payload?.localPath || '').trim()
+			if (!localPath) {
+				return { installed: false, error: 'DSH profile localPath 为空' }
+			}
+			// 1. 检查插件源码是否存在于 DSH 仓库
+			const destPkgPath = path.join(
+				localPath,
+				'packages',
+				'dvstudio-director',
+				'dvstudio-director',
+				'package.json'
+			)
+			if (!fs.existsSync(destPkgPath)) {
+				return { installed: false, reason: '插件源码未同步到 DSH 仓库' }
+			}
+			// 2. 检查 DSH profile package.json 是否注册了插件
+			const os = await import('node:os')
+			const dshHome = process.env.DSH_HOME || path.join(os.homedir(), '.dsh')
+			const profilePkgPath = path.join(dshHome, 'profiles', 'web', 'package.json')
+			if (!fs.existsSync(profilePkgPath)) {
+				return { installed: false, reason: 'DSH profile 不存在' }
+			}
+			const profilePkg = JSON.parse(fs.readFileSync(profilePkgPath, 'utf-8'))
+			const bundles = profilePkg?.dsh?.profile?.bundles || []
+			const hasBundle = bundles.includes('@dvstudio/director-plugin')
+			const hasDep = profilePkg?.dependencies?.['@dvstudio/director-plugin']
+			if (!hasBundle || !hasDep) {
+				return { installed: false, reason: '插件未在 DSH profile 中注册' }
+			}
+			return {
+				installed: true,
+				profileRegistered: true
+			}
+		} catch (err) {
+			return { installed: false, error: err.message }
+		}
+	})
+
+	ipcMain.handle('dweb:director-console:install-plugin', async (_e, payload) => {
+		try {
+			const localPath = String(payload?.localPath || '').trim()
+			if (!localPath) {
+				return { ok: false, error: 'DSH profile localPath 为空' }
+			}
+
+			const pluginPath = getBundledPluginPath()
+			const syncScript = getBundledSyncScriptPath()
+			const nodeExe = getNodeExecutablePath()
+
+			console.log('[DirectorConsole:install-plugin] pluginPath=', pluginPath)
+			console.log('[DirectorConsole:install-plugin] syncScript=', syncScript)
+			console.log('[DirectorConsole:install-plugin] localPath=', localPath)
+
+			const { spawn } = await import('child_process')
+			const child = spawn(nodeExe, [syncScript, '--src', pluginPath, '--dest', localPath], {
+				env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+				stdio: ['pipe', 'pipe', 'pipe']
+			})
+
+			const stdoutChunks = []
+			const stderrChunks = []
+			child.stdout.on('data', (d) => {
+				const text = d.toString()
+				stdoutChunks.push(text)
+				console.log('[DirectorConsole:install-plugin] sync stdout:', text.trim())
+			})
+			child.stderr.on('data', (d) => {
+				const text = d.toString()
+				stderrChunks.push(text)
+				console.error('[DirectorConsole:install-plugin] sync stderr:', text.trim())
+			})
+
+			const exitCode = await new Promise((resolve) => {
+				child.on('close', resolve)
+			})
+
+			if (exitCode !== 0) {
+				return {
+					ok: false,
+					error: 'sync.mjs 退出码 ' + exitCode + ': ' + stderrChunks.join('')
+				}
+			}
+
+			return {
+				ok: true,
+				stdout: stdoutChunks.join(''),
+				action: 'installed'
+			}
+		} catch (err) {
+			console.error('[DirectorConsole:install-plugin] 异常', err)
+			return { ok: false, error: err.message }
+		}
+	})
+
+	// ===== 导演控制台 DSH 模型多模态检查 IPC =====
+	// 检查 ~/.dsh/settings.yaml 中所有已配置模型是否声明了图片输入支持
+	// 覆盖所有 LLM 适配器（llm-pi-ai 用 input 字段，llm-deepseek 用 inputModalities 字段）
+	// 如果缺少，自动补全，让 Agent 能进行图片理解（截图检查镜头构图）
+	ipcMain.handle('dweb:director-console:check-model-vision', async () => {
+		try {
+			const os = await import('node:os')
+			const dshHome = process.env.DSH_HOME || path.join(os.homedir(), '.dsh')
+			const settingsPath = path.join(dshHome, 'settings.yaml')
+			if (!fs.existsSync(settingsPath)) {
+				return { ok: false, error: 'DSH settings.yaml 不存在' }
+			}
+			const raw = fs.readFileSync(settingsPath, 'utf-8')
+
+			// 通用解析：扫描所有 llm-* 适配器下的 providers.models 列表
+			// 每个模型条目形如：
+			//   - id: model-name
+			//     name: Display Name
+			//     input: [text, image]           ← llm-pi-ai 适配器
+			//     inputModalities: [text, image]  ← llm-deepseek 适配器
+			const lines = raw.split(/\r?\n/)
+			const models = []
+			let currentAdapter = null // 当前适配器名（如 llm-pi-ai / llm-deepseek）
+			let inProviders = false // 是否在 providers 下
+			let inModels = false // 是否在 models 列表中
+			let currentModelId = null
+			let currentModelHasImage = false
+
+			for (let i = 0; i < lines.length; i++) {
+				const line = lines[i]
+				// 检测进入 llm-* 适配器（顶层 key）
+				const adapterMatch = line.match(/^(llm-[a-z\-]+):\s*$/)
+				if (adapterMatch) {
+					// 收尾前一个适配器的最后一个模型
+					if (currentModelId) {
+						models.push({
+							id: currentModelId,
+							hasImageInput: currentModelHasImage,
+							adapter: currentAdapter
+						})
+					}
+					currentAdapter = adapterMatch[1]
+					inProviders = false
+					inModels = false
+					currentModelId = null
+					currentModelHasImage = false
+					continue
+				}
+				// 检测离开 llm-* 适配器（遇到非 llm- 开头的顶层 key）
+				if (
+					currentAdapter &&
+					/^[a-z]/.test(line) &&
+					!/^\s/.test(line) &&
+					!line.startsWith('llm-')
+				) {
+					if (currentModelId) {
+						models.push({
+							id: currentModelId,
+							hasImageInput: currentModelHasImage,
+							adapter: currentAdapter
+						})
+					}
+					currentAdapter = null
+					inProviders = false
+					inModels = false
+					currentModelId = null
+					currentModelHasImage = false
+					continue
+				}
+				// 检测 providers: 列表
+				if (currentAdapter && /^(\s+)providers:\s*$/.test(line)) {
+					inProviders = true
+					continue
+				}
+				// 检测 models: 列表开始
+				if (inProviders && /^(\s+)models:\s*$/.test(line)) {
+					inModels = true
+					continue
+				}
+				// 检测离开 providers（缩进回到适配器层级或更浅）
+				if (inProviders && inModels && /^(\s*)[a-z]/.test(line)) {
+					const indent = line.match(/^(\s*)/)[1].length
+					// 如果缩进 <= providers 的缩进，说明离开了 models 列表
+					// 简单判断：如果行不以 - 开头且缩进较浅，可能是新 provider 或离开 providers
+					if (!line.trim().startsWith('-') && indent <= 4) {
+						// 收尾当前模型
+						if (currentModelId) {
+							models.push({
+								id: currentModelId,
+								hasImageInput: currentModelHasImage,
+								adapter: currentAdapter
+							})
+						}
+						inModels = false
+						currentModelId = null
+						currentModelHasImage = false
+						// 检查是否还在 providers 下
+						if (indent <= 2) {
+							inProviders = false
+						}
+						continue
+					}
+				}
+				// 在 models 列表中，检测 - id: 条目（新模型开始）
+				if (inModels && /^(\s*)-\s+id:\s*(.+)$/.test(line)) {
+					// 保存前一个模型
+					if (currentModelId) {
+						models.push({
+							id: currentModelId,
+							hasImageInput: currentModelHasImage,
+							adapter: currentAdapter
+						})
+					}
+					const m = line.match(/^(\s*)-\s+id:\s*(.+)$/)
+					currentModelId = m[2].trim()
+					currentModelHasImage = false
+					continue
+				}
+				// 检测当前模型的 input 或 inputModalities 字段
+				if (inModels && currentModelId) {
+					const inputMatch = line.match(/(?:input|inputModalities):\s*\[([^\]]*)\]/)
+					if (inputMatch) {
+						if (inputMatch[1].includes('image')) {
+							currentModelHasImage = true
+						}
+					}
+				}
+			}
+			// 收集最后一个模型
+			if (currentModelId) {
+				models.push({
+					id: currentModelId,
+					hasImageInput: currentModelHasImage,
+					adapter: currentAdapter
+				})
+			}
+
+			const missingVision = models.filter((m) => !m.hasImageInput)
+			return {
+				ok: true,
+				totalModels: models.length,
+				missingVision,
+				allHaveVision: missingVision.length === 0
+			}
+		} catch (err) {
+			console.error('[DirectorConsole:check-model-vision] 异常', err)
+			return { ok: false, error: err.message }
+		}
+	})
+
+	// 自动修复：为所有缺少图片输入声明的模型添加对应字段
+	// llm-pi-ai 适配器用 input: [text, image]
+	// llm-deepseek 适配器用 inputModalities: [text, image]
+	// 其他适配器默认用 input: [text, image]（pi-ai 风格，更通用）
+	ipcMain.handle('dweb:director-console:fix-model-vision', async () => {
+		try {
+			const os = await import('node:os')
+			const dshHome = process.env.DSH_HOME || path.join(os.homedir(), '.dsh')
+			const settingsPath = path.join(dshHome, 'settings.yaml')
+			if (!fs.existsSync(settingsPath)) {
+				return { ok: false, error: 'DSH settings.yaml 不存在' }
+			}
+			const raw = fs.readFileSync(settingsPath, 'utf-8')
+			const lines = raw.split(/\r?\n/)
+
+			let currentAdapter = null
+			let inProviders = false
+			let inModels = false
+			let currentModelId = null
+			let currentModelHasImage = false
+			let currentModelIdLineIdx = -1
+			let currentModelIndent = '    '
+
+			const insertions = []
+
+			for (let i = 0; i < lines.length; i++) {
+				const line = lines[i]
+				// 检测进入 llm-* 适配器
+				const adapterMatch = line.match(/^(llm-[a-z\-]+):\s*$/)
+				if (adapterMatch) {
+					// 收尾前一个适配器的最后一个模型
+					if (inModels && currentModelId && !currentModelHasImage) {
+						insertions.push({
+							afterLine: currentModelIdLineIdx,
+							indent: currentModelIndent,
+							field: currentAdapter === 'llm-deepseek' ? 'inputModalities' : 'input'
+						})
+					}
+					currentAdapter = adapterMatch[1]
+					inProviders = false
+					inModels = false
+					currentModelId = null
+					currentModelHasImage = false
+					continue
+				}
+				// 检测离开 llm-* 适配器
+				if (
+					currentAdapter &&
+					/^[a-z]/.test(line) &&
+					!/^\s/.test(line) &&
+					!line.startsWith('llm-')
+				) {
+					if (inModels && currentModelId && !currentModelHasImage) {
+						insertions.push({
+							afterLine: currentModelIdLineIdx,
+							indent: currentModelIndent,
+							field: currentAdapter === 'llm-deepseek' ? 'inputModalities' : 'input'
+						})
+					}
+					currentAdapter = null
+					inProviders = false
+					inModels = false
+					currentModelId = null
+					currentModelHasImage = false
+					continue
+				}
+				// 检测 providers:
+				if (currentAdapter && /^(\s+)providers:\s*$/.test(line)) {
+					inProviders = true
+					continue
+				}
+				// 检测 models:
+				if (inProviders && /^(\s+)models:\s*$/.test(line)) {
+					inModels = true
+					continue
+				}
+				// 检测离开 models 列表
+				if (inProviders && inModels && /^(\s*)[a-z]/.test(line)) {
+					const indent = line.match(/^(\s*)/)[1].length
+					if (!line.trim().startsWith('-') && indent <= 4) {
+						if (currentModelId && !currentModelHasImage) {
+							insertions.push({
+								afterLine: currentModelIdLineIdx,
+								indent: currentModelIndent,
+								field: currentAdapter === 'llm-deepseek' ? 'inputModalities' : 'input'
+							})
+						}
+						inModels = false
+						currentModelId = null
+						currentModelHasImage = false
+						if (indent <= 2) {
+							inProviders = false
+						}
+						continue
+					}
+				}
+				// 检测 - id: 条目
+				if (inModels && /^(\s*)-\s+id:\s*(.+)$/.test(line)) {
+					// 检查前一个模型
+					if (currentModelId && !currentModelHasImage) {
+						insertions.push({
+							afterLine: currentModelIdLineIdx,
+							indent: currentModelIndent,
+							field: currentAdapter === 'llm-deepseek' ? 'inputModalities' : 'input'
+						})
+					}
+					const m = line.match(/^(\s*)-\s+id:\s*(.+)$/)
+					currentModelId = m[2].trim()
+					currentModelHasImage = false
+					currentModelIdLineIdx = i
+					currentModelIndent = m[1] + '  '
+					continue
+				}
+				// 检测 input 或 inputModalities 字段
+				if (inModels && currentModelId) {
+					const inputMatch = line.match(/(?:input|inputModalities):\s*\[([^\]]*)\]/)
+					if (inputMatch && inputMatch[1].includes('image')) {
+						currentModelHasImage = true
+					}
+				}
+			}
+			// 收尾最后一个模型
+			if (inModels && currentModelId && !currentModelHasImage) {
+				insertions.push({
+					afterLine: currentModelIdLineIdx,
+					indent: currentModelIndent,
+					field: currentAdapter === 'llm-deepseek' ? 'inputModalities' : 'input'
+				})
+			}
+
+			if (insertions.length === 0) {
+				return { ok: true, action: 'noop', message: '所有模型已支持图片输入' }
+			}
+
+			// 从后往前插入，避免行号偏移
+			const newLines = [...lines]
+			insertions.sort((a, b) => b.afterLine - a.afterLine)
+			for (const ins of insertions) {
+				newLines.splice(ins.afterLine + 1, 0, `${ins.indent}${ins.field}: [text, image]`)
+			}
+			fs.writeFileSync(settingsPath, newLines.join('\n'), 'utf-8')
+			console.log(
+				'[DirectorConsole:fix-model-vision] 已为',
+				insertions.length,
+				'个模型添加图片输入支持'
+			)
+			return {
+				ok: true,
+				action: 'fixed',
+				fixedCount: insertions.length,
+				message: `已为 ${insertions.length} 个模型添加图片输入支持`
+			}
+		} catch (err) {
+			console.error('[DirectorConsole:fix-model-vision] 异常', err)
+			return { ok: false, error: err.message }
+		}
+	})
+
 	let comfyuiSetupWindow = null
 	ipcMain.handle('dweb:comfyui-setup:open', async (_e, payload) => {
 		console.log('[main] dweb:comfyui-setup:open payload:', JSON.stringify(payload))
@@ -2541,7 +3322,20 @@ function registerIpc() {
 }
 
 async function stopBackend() {
+	try {
+		await disposeDeepSeekHarness()
+	} catch (error) {
+		appendRuntimeLog(`[app] Harness cleanup error: ${String(error?.message || error)}`)
+	}
 	shutdownBackend()
+	// 关闭导演控制台 Pipe/HTTP Server，删除外部进程（DSH 插件）读取的配置文件，
+	// 否则 DVStudio 退出后 DSH 客户端仍会尝试连接已失效的 pipe/http，
+	// 在 Windows 上表现为 node.exe 启动时 DLL 初始化失败 (0xc0000142)。
+	try {
+		getDirectorPipeServer().stop()
+	} catch (error) {
+		appendRuntimeLog(`[app] Director pipe cleanup error: ${String(error?.message || error)}`)
+	}
 	try {
 		const pythonBridge = getPythonBridge()
 		await pythonBridge.shutdown()
@@ -2847,9 +3641,30 @@ app.on('window-all-closed', () => {
 	app.quit()
 })
 
-app.on('before-quit', async () => {
-	platformShutdown()
-	await stopBackend()
+let quitCleanupStarted = false
+let quitCleanupFinished = false
+app.on('before-quit', (event) => {
+	if (quitCleanupFinished) return
+	event.preventDefault()
+	if (quitCleanupStarted) return
+	quitCleanupStarted = true
+	const timeout = setTimeout(() => {
+		appendRuntimeLog('[app] shutdown cleanup timed out')
+		quitCleanupFinished = true
+		app.quit()
+	}, 15000)
+	void (async () => {
+		try {
+			platformShutdown()
+			await stopBackend()
+		} catch (error) {
+			appendRuntimeLog(`[app] shutdown cleanup error: ${String(error?.message || error)}`)
+		} finally {
+			clearTimeout(timeout)
+			quitCleanupFinished = true
+			app.quit()
+		}
+	})()
 })
 
 if (platformPreflight()) {

@@ -1,0 +1,21 @@
+{
+	"name": "@dvstudio/director-plugin",
+	"version": "1.0.0",
+	"private": true,
+	"type": "module",
+	"main": "src/index.ts",
+	"description": "DVStudio 导演控制台 DSH 插件 - 提供角色、摄像头、时间轴等分镜工具",
+	"dsh": {
+		"bundle": {
+			"patch": "./cordis.patch.yml"
+		}
+	},
+	"scripts": {
+		"sync": "node ../../sync.mjs"
+	},
+	"peerDependencies": {
+		"@deepseek-ai/cordis": "*",
+		"@deepseek-ai/dsh-tools": "*",
+		"@deepseek-ai/dsh-agent": "*"
+	}
+}

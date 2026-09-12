@@ -136,6 +136,10 @@ import type {
 	OpenVideoEditorResult,
 	OpenComfySetupPayload,
 	OpenComfySetupResult,
+	OpenDirectorConsolePayload,
+	OpenDirectorConsoleResult,
+	DirectorConsoleScenePayload,
+	DirectorConsoleSavePayload,
 } from '../electronBridge/types'
 import type { WorkflowResource, WorkflowNode } from '../aiworkflow/types'
 
@@ -254,6 +258,7 @@ declare global {
 		__DWEB_LOCAL_EXEC_STREAM_MODE?: string
 		process?: { versions?: { electron?: string } }
 		dweb?: {
+			deepseekHarness?: { setup: HarnessSetupApi }
 			common: {
 				getAppInfo?(): DwebAppInfo
 				checkForUpdate?(): Promise<DwebUpdateCheckResult>
@@ -297,6 +302,40 @@ declare global {
 				open3dEditor(payload: Open3DEditorPayload): Promise<Open3DEditorResult>
 				openVideoEditor(payload: OpenVideoEditorPayload): Promise<OpenVideoEditorResult>
 				openComfySetup(payload?: OpenComfySetupPayload): Promise<OpenComfySetupResult>
+				openDirectorConsole(payload: OpenDirectorConsolePayload): Promise<OpenDirectorConsoleResult>
+				directorConsoleRequestData(payload: { nodeId: string }): Promise<{ ok: boolean; data?: DirectorConsoleScenePayload; error?: string }>
+				directorConsolePushData(payload: DirectorConsoleScenePayload): void
+				directorConsoleSave(payload: DirectorConsoleSavePayload): void
+				getDirectorConsoleData(): DirectorConsoleScenePayload | null
+				onDirectorConsoleData(handler: (payload: DirectorConsoleScenePayload) => void): number
+				offDirectorConsoleData(listenerId: number): void
+				onDirectorConsoleSave(handler: (payload: DirectorConsoleSavePayload) => void): number
+				offDirectorConsoleSave(listenerId: number): void
+				onDirectorConsoleDataRequest(handler: (payload: { nodeId: string }) => void): number
+				offDirectorConsoleDataRequest(listenerId: number): void
+				// [v5.0] 导出视频
+				directorConsoleCreateTempDir(): Promise<{ ok: boolean; jobId?: string; dir?: string; error?: string }>
+				directorConsoleWriteFrame(payload: { jobId: string; frameIndex: number; data: string }): Promise<{ ok: boolean; error?: string }>
+				directorConsoleExportVideo(payload: { jobId: string; fps: number; outputName?: string }): Promise<{ ok: boolean; outputPath?: string; error?: string }>
+				directorConsoleCleanupTempDir(payload: { jobId: string }): Promise<{ ok: boolean }>
+				directorConsoleNotifyExportDone(payload: { nodeId: string; assetUrl?: string; assetName?: string }): void
+				onDirectorConsoleExportDone(handler: (payload: { nodeId: string; assetUrl?: string; assetName?: string }) => void): number
+				offDirectorConsoleExportDone(listenerId: number): void
+				// [v6.0] 模型多模态检查
+				directorConsoleCheckModelVision(): Promise<{
+					ok: boolean
+					totalModels?: number
+					missingVision?: Array<{ id: string; hasImageInput: boolean; adapter?: string }>
+					allHaveVision?: boolean
+					error?: string
+				}>
+				directorConsoleFixModelVision(): Promise<{
+					ok: boolean
+					action?: 'noop' | 'fixed'
+					fixedCount?: number
+					message?: string
+					error?: string
+				}>
 			}
 			aiworkflow: {
 				pingBackend(): Promise<BackendPingResult>
@@ -349,6 +388,42 @@ declare global {
 					bucket?: string
 					subPath?: string
 				}): Promise<{ ok: boolean; asset?: UploadedProjectAsset; error?: string }>
+				readProjectAssetText(payload: {
+					projectId: number
+					name?: string
+					subPath?: string
+					projectRelativePath?: string
+				}): Promise<{
+					ok: boolean
+					resolved?: boolean
+					text?: string
+					absolutePath?: string
+					projectRelativePath?: string
+					reason?: string
+					error?: string
+				}>
+				writeProjectAssetText(payload: {
+					projectId: number
+					name?: string
+					subPath?: string
+					text: string
+				}): Promise<{
+					ok: boolean
+					absolutePath?: string
+					projectRelativePath?: string
+					error?: string
+				}>
+				writeProjectAssetBinary(payload: {
+					projectId: number
+					name?: string
+					subPath?: string
+					data: Uint8Array | ArrayBuffer | string
+				}): Promise<{
+					ok: boolean
+					absolutePath?: string
+					projectRelativePath?: string
+					error?: string
+				}>
 				importProjectAsset(payload: {
 					projectId: number
 					kind?: string
@@ -634,6 +709,70 @@ declare global {
 			gemini?: {
 				chat?(payload: any): Promise<any>
 			}
+			/**
+			 * CLI 跨进程控制服务器命名空间（dweb:cli-control:* IPC）
+			 */
+			cliControlServer: {
+				getStatus(): Promise<{
+					ok: boolean
+					running: boolean
+					port?: number
+					host?: string
+					error?: string
+					app?: { name: string; version: string; currentProject?: { id: number; name: string } | null }
+					agent?: { ready: boolean; runtime: string }
+					mcp?: { builtinToolsCount: number }
+				}>
+				getTask(payload: { taskId: string }): Promise<{
+					ok: boolean
+					task?: {
+						taskId: string
+						command: string
+						status: string
+						payload?: Record<string, unknown>
+						source?: string
+						createdAt: number
+						updatedAt?: number
+						completedAt?: number
+						nodeId?: string
+						outputFiles?: string[]
+						exportedFiles?: string[]
+						error?: string | { code: string; message: string }
+						progress?: { percent: number; phase?: string }
+					}
+					error?: string
+				}>
+				listTasks(payload?: {
+					limit?: number
+					offset?: number
+					status?: string
+					filterSource?: string
+				}): Promise<{
+					ok: boolean
+					tasks: Array<{
+						taskId: string
+						command: string
+						status: string
+						source?: string
+						createdAt: number
+						updatedAt?: number
+					}>
+					total: number
+					limit?: number
+					offset?: number
+					error?: string
+				}>
+				markTaskCompleted(payload: {
+					taskId: string
+					outputFiles?: string[]
+					exportedFiles?: string[]
+				}): Promise<{ ok: boolean; error?: string }>
+				markTaskFailed(payload: {
+					taskId: string
+					error?: string | { code?: string; message: string }
+				}): Promise<{ ok: boolean; error?: string }>
+			}
 		}
 	}
 }
+import type { HarnessSetupApi } from '../electronBridge/deepseekHarnessTypes'

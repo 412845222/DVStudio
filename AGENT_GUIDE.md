@@ -21,6 +21,67 @@
 - [12_TESTING_GUIDE.md](agent_docs/12_TESTING_GUIDE.md) — 测试开发指引（tests/ 目录结构 + Vitest + Mock 策略 + 质量门禁）
 - [13_CLOUD_MODULES_GUIDE.md](agent_docs/13_CLOUD_MODULES_GUIDE.md) — 云服务与扩展模块指引（CloudFS 云存储 / Steam Workshop 工坊模板 / ComfyUI 本地服务管理增强）
 - [14_NODE_THREE_LAYER_ARCHITECTURE.md](agent_docs/14_NODE_THREE_LAYER_ARCHITECTURE.md) — 🆕 AI工作流节点开发三层链路架构指南（UI组件层→业务逻辑层→引擎核心层职责边界、数据流向标准流程、关键坑点避坑、开发Checklist）
+- [15_CLI_CONTROL_GUIDE.md](agent_docs/15_CLI_CONTROL_GUIDE.md) — 🆕 CLI 跨进程控制接口开发指引（dvscli 子命令、端口发现、鉴权 Token、generate-image 三段流水线、JSON Schema 解析、Agent 快速集成清单）
+
+---
+
+## ⚠️⚠️⚠️ dvs-cli 图片生成（Seedream）链路速查（2026-08-20 简化参数链路修复总结，**必看！**）
+
+> 🔴 **在修改任何 dvs-cli generate-image 参数、Service 层生图逻辑、或给其他 Agent 写 Seedream 调用示例前，请先完整阅读 [15_CLI_CONTROL_GUIDE.md 完整章节](agent_docs/15_CLI_CONTROL_GUIDE.md#4-generate-image-命令详解三段流水线)。本段落只是速查索引，详细像素映射表、8 种官方比例、三段降级、退出码、JSON Schema 都在 15 文档内。**
+
+### 核心铁律（违反必出 Bug / 参数漂移 / 与蓝图面板不一致）
+
+1. **CLI 默认、后端默认、蓝图节点对话框默认 — 模型一定是 Seedream，Endpoint 一定是 `doubao-seedream-4-5-251128`（Seedream 4.5）**。任何地方（CLI 参数、Tool Schema、Handler 入参、Agent Prompt 构造）**禁止**写入 `model = 'gemini'` / `'gpt'` 作为默认值。非 Seedream 兼容 ID 会被后端 `normalizeSeedreamModel()` 自动回退到 doubao-seedream-4-5-251128 并打 WARN 日志（不会报错，避免用户误传导致任务失败）。
+2. **Seedream 原生字段是唯一契约，不再对宽高反复重算**。提交 payload 时写 `seedreamSize (1K/2K/3K/4K) + seedreamAspectRatio (1:1/16:9/9:16/4:3/3:4/3:2/2:3/21:9) + seedreamQuantity (1/2/4)`，与蓝图节点底部参数面板完全对齐；width/height/size/aspectRatio 仅作为服务端查表中间态存在，**不要在 CLI payload 里冗余写入**。
+3. **宽度/高度参数是 legacy 兼容输入，不是输出**。用户传 `--width 1920 --height 1080` 时，CLI 和 service 层通过 `_matchSeedreamPresetAndRatio()` 精确比 → 最简比 → 面积差最小，三阶段匹配出最近似的官方档位+比例（比如会被规范化为 `2K 16:9` → 2848x1600），而不是保留 1920x1080 像素。
+4. **参数优先级（Endpoint 解析）从高到低**：`--seedream-endpoint` > `--seedream-model-version` > `--model`（真实形如 `ep-xxx` / `doubao-xxx` 的 Endpoint ID，否则忽略）> 蓝图默认 `doubao-seedream-4-5-251128`。
+5. **数量上限严格 4**（Seedream 单次 API limit），即使传 `--image-count 16` 也会在 seedreamQuantity 字段被 clamp 到 4。
+6. **Seed 的两种写法都会映射到 `payload.seedreamSeed`**（蓝图原生字段）：`--seedream-seed 123` 和 `--seed 123`。`-1` 或不传表示随机。
+
+### 七层完整数据流（关键文件）
+
+| 层  | 场景                          | 关键文件                                                                                                                                                                                                                                                                                                                                 |
+| --- | ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0   | 最终用户/外部 Agent 调用入口  | [build/bin/dvs-cli.ps1](file:///g:/DwebStudio/DwebVideoStudio/DVStudio/build/bin/dvs-cli.ps1)（Windows 端，安装后 PATH 可用的 `dvs-cli.exe/.cmd/.ps1`；generate-image if 块内部以 UTF-16LE Base64 存储规避 PS5 解析器回溯 bug）；[cli/src/commands/generate-image.mjs](file:///g:/DwebStudio/DwebVideoStudio/DVStudio/cli/src/commands/generate-image.mjs)（Node 开发者入口，未实现 seedream-* 原生参数） |
+| 1   | 端口/Token 自动发现（5 层）   | [build/bin/dvs-cli.ps1 Get-CandidatePaths()](file:///g:/DwebStudio/DwebVideoStudio/DVStudio/build/bin/dvs-cli.ps1#L127)；[cli/src/core/discovery.mjs](file:///g:/DwebStudio/DwebVideoStudio/DVStudio/cli/src/core/discovery.mjs)                                                                                                                                                                            |
+| 2   | 本地 HTTP 服务器 + 鉴权       | [cli-control-server/httpServer.mjs](file:///g:/DwebStudio/DwebVideoStudio/DVStudio/electron/backend/modules/cli-control-server/httpServer.mjs)；[auth.mjs](file:///g:/DwebStudio/DwebVideoStudio/DVStudio/electron/backend/modules/cli-control-server/auth.mjs)（除 `/health` 外全部校验 `x-dvs-cli-token` Header）                                                                                            |
+| 3   | P3 后端直连（最快，不依赖 UI）| [cli-control-server/service.mjs](file:///g:/DwebStudio/DwebVideoStudio/DVStudio/electron/backend/modules/cli-control-server/service.mjs)：`normalizeSeedreamPayloadForSubmission()`（服务端 seedream 参数兜底规范化，宽高→档位+比例）+ `resolveSeedreamEndpointFromPayload()`（Endpoint 4 级优先级解析）+ `tryDirectGenerateImage()`（P3 主路径）；预览节点 + Agent 对话块入队用"exportedFiles 优先、outputFiles 兜底"策略 |
+| 4   | P2 Agent Runtime（需蓝图打开）| [useCLIAgentTrigger.ts](file:///g:/DwebStudio/DwebVideoStudio/DVStudio/src/views/AIWorkflow/node-business/chat/useCLIAgentTrigger.ts)：前端轮询 taskStore → dispatch 到 Agent 对话框；蓝图 image 预览节点 `createImageNodeRequests` + Assistant 消息块 `chatPreviewBlocks`                                                                                                                                    |
+| 5   | Seedream/Blueprint 内部工具   | [mcp/builtinTools.mjs](file:///g:/DwebStudio/DwebVideoStudio/DVStudio/electron/backend/modules/mcp/builtinTools.mjs)：`generateImageViaSeedream()`（优先读 seedreamSize/seedreamAspectRatio 构造 Ark 请求）+ `generateImageViaNodePipeline()`（降级到蓝图节点流水线，把 seedream 原生字段写入 nodeConfig）                                                                                                   |
+| 6   | Ark 实际 API 调用 + 像素查表 | [third-party/service.mjs](file:///g:/DwebStudio/DwebVideoStudio/DVStudio/electron/backend/modules/third-party/service.mjs)：`resolveSeedreamSize(sizePreset, aspectRatio)` 把 seedreamSize+seedreamAspectRatio → 真实 WxH 像素；`seedreamGenerateStream async function*`                                                                                                                                   |
+| 7   | 落盘 + 导出 + 蓝图预览       | [cli-control-server/taskStore.mjs](file:///g:/DwebStudio/DwebVideoStudio/DVStudio/electron/backend/modules/cli-control-server/taskStore.mjs)：`%TEMP%/dvs-genimg/*.png` 临时 → `autoExport` 复制到 `<项目根>/generated_media/<项目名>/images/`（默认落盘目录），调用方**必须优先读 `task.exportedFiles[]`**（已导出的最终路径），不要直接拿 `outputFiles[]`（临时目录，会被清理）           |
+
+### 8 种官方比例 × 4 档分辨率 像素对照表（服务端查表唯一真值）
+
+| 档位 \ 比例 | 1:1 | 16:9 | 9:16 | 4:3 | 3:4 | 3:2 | 2:3 | 21:9 |
+|---|---|---|---|---|---|---|---|---|
+| **1K** | 1024×1024 | 1280×720 | 720×1280 | 1152×864 | 864×1152 | 1248×832 | 832×1248 | 1512×648 |
+| **2K** ⭐默认 | 2048×2048 | **2848×1600** | 1600×2848 | 2304×1728 | 1728×2304 | 2496×1664 | 1664×2496 | 3136×1344 |
+| **3K** | 3072×3072 | 4096×2304 | 2304×4096 | 3456×2592 | 2592×3456 | 3744×2496 | 2496×3744 | 4704×2016 |
+| **4K** | 4096×4096 | 5504×3040 | 3040×5504 | 4704×3520 | 3520×4704 | 4992×3328 | 3328×4992 | 6240×2656 |
+
+### 另一个 Agent 最快上手 Seedream（只记这 4 行）
+
+```bash
+# 2K 16:9 横屏（推荐默认组合，与蓝图默认一致）
+dvs-cli generate-image --seedream-size 2K --seedream-aspect-ratio 16:9 --prompt "..."
+
+# 头像 1:1 + 固定 seed 复现（1K 够用，省配额）
+dvs-cli generate-image --seedream-size 1K --seedream-aspect-ratio 1:1 --seedream-seed 42 --prompt "..."
+
+# 竖屏 9:16 + 4 张批量 + PNG 无损 + 指定 Endpoint（Seedream 5.0）
+dvs-cli generate-image --seedream-size 2K --seedream-aspect-ratio 9:16 `
+  --seedream-quantity 4 --seedream-output-format png `
+  --seedream-endpoint doubao-seedream-5-0-260128 --prompt "..."
+
+# 宽高 legacy 兼容写法（仍可用，内部自动规范化为 2K 16:9）
+dvs-cli generate-image --width 1920 --height 1080 --prompt "..."
+```
+
+### 常见坑点速查
+- **输出文件找不到**：检查 `task.exportedFiles[]`（复制到 outputPath 的），不是 `task.outputFiles[]`（%TEMP% 临时目录，会被清理）
+- **传了 width=1280 height=720 但出的是 1280x720？**：对的，因为 1280×720 正好命中 1K 16:9 精确行（上表存在），所以规范化为 1K 16:9 就是 1280×720；非精确像素才会按"最接近面积"匹配
+- **参数生效但帮助里看不到 seedream-size 等 flag**：Node CLI（`cli/bin/dvscli.mjs`）暂未实现 seedream-* 参数，仍使用 legacy width/height/aspectRatio；Windows 端 `dvs-cli.cmd/.ps1` 已完整支持。两种入口最终都走 service.mjs `normalizeSeedreamPayloadForSubmission()`，所以服务端规范化行为一致。
 
 ---
 

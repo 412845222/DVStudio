@@ -1,3 +1,5 @@
+import { callComfyRuntime } from '../electronBridge'
+import type { ComfyTemplateResolution } from '../aiworkflow/types'
 import { getBackendBaseUrl } from './backendConfig'
 import { isAgentToUiMessage } from '../core/agentToUI'
 import type { AgentToUiMessage } from '../core/agentToUI'
@@ -644,7 +646,8 @@ export type ResolveHistoryResponse =
 	| {
 			ok: true
 			baseUrl: string
-			hasHistory: true
+			hasHistory: boolean
+			resolution?: ComfyTemplateResolution
 			promptGraph: Record<string, any>
 			promptId: string
 			matchType: 'exact' | 'fuzzy' | 'direct'
@@ -784,18 +787,23 @@ function isCodexIpcAvailable(): boolean {
 	return !!(window as Window).__DWEB_RUNTIME__?.isElectron && !!(window as any).dweb?.codex
 }
 
-type ComfyInputFile = File | { file: File; mediaType: 'image' | 'video' }
+type ComfyInputFile = File | { file: File; mediaType: 'image' | 'video'; bindingId?: string }
 
-async function filesToDataUrlFiles(
-	files: ComfyInputFile[]
-): Promise<
-	Array<{ name: string; dataUrl: string; mediaType: 'image' | 'video'; mimeType: string }>
+async function filesToDataUrlFiles(files: ComfyInputFile[]): Promise<
+	Array<{
+		name: string
+		dataUrl: string
+		mediaType: 'image' | 'video'
+		mimeType: string
+		bindingId?: string
+	}>
 > {
 	const out: Array<{
 		name: string
 		dataUrl: string
 		mediaType: 'image' | 'video'
 		mimeType: string
+		bindingId?: string
 	}> = []
 	for (let i = 0; i < files.length; i++) {
 		const entry = files[i]
@@ -807,6 +815,7 @@ async function filesToDataUrlFiles(
 			name: f.name || `input_${i}`,
 			dataUrl,
 			mediaType,
+			bindingId: entry instanceof File ? undefined : entry.bindingId,
 			mimeType: f.type || 'application/octet-stream'
 		})
 	}
@@ -2577,7 +2586,7 @@ export class ComfyUIBridgeService {
 	async listWorkflows(comfyBaseUrl: string): Promise<WorkflowsListResponse> {
 		if (isComfyRuntimeIpcAvailable()) {
 			try {
-				const ipcResult = await (window as any).dweb.comfyui.runtime.workflows.list({
+				const ipcResult = await callComfyRuntime('list', {
 					baseUrl: comfyBaseUrl
 				})
 				if (ipcResult && typeof ipcResult === 'object') {
@@ -2671,7 +2680,7 @@ export class ComfyUIBridgeService {
 	): Promise<ResolveHistoryResponse> {
 		if (isComfyRuntimeIpcAvailable()) {
 			try {
-				const ipcResult = await (window as any).dweb.comfyui.runtime.workflows.resolveHistory({
+				const ipcResult = await callComfyRuntime('resolveHistory', {
 					baseUrl: comfyBaseUrl,
 					workflowPath
 				})
@@ -2711,6 +2720,9 @@ export class ComfyUIBridgeService {
 			negativePrompt?: string
 			historyPromptId?: string
 			inputMappings?: ComfyInputMappings
+			snapshotId?: string
+			contentHash?: string
+			workflowHash?: string
 		}
 	): Promise<RunResponse> {
 		if (isComfyRuntimeIpcAvailable()) {
@@ -2723,17 +2735,20 @@ export class ComfyUIBridgeService {
 					negativePrompt: overrides?.negativePrompt,
 					historyPromptId: overrides?.historyPromptId,
 					inputMappings: overrides?.inputMappings,
+					snapshotId: overrides?.snapshotId,
+					contentHash: overrides?.contentHash,
+					workflowHash: overrides?.workflowHash,
 					files: dataUrlFiles
 				}
 				const ipcPayload = JSON.parse(JSON.stringify(rawPayload))
-				const ipcResult = await (window as any).dweb.comfyui.runtime.run(ipcPayload)
+				const ipcResult = await callComfyRuntime('run', ipcPayload)
 				if (ipcResult && typeof ipcResult === 'object') {
 					if (ipcResult.ok === false) {
 						return {
 							ok: false,
 							status: ipcResult.status || 500,
 							baseUrl: comfyBaseUrl,
-							error: ipcResult.error || 'run failed via IPC',
+							error: ipcResult.message || ipcResult.error || 'run failed via IPC',
 							requiresHistorySetup: ipcResult.requiresHistorySetup,
 							message: ipcResult.message,
 							comfyuiError: ipcResult.comfyuiError

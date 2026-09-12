@@ -1,3 +1,4 @@
+import { readUiWidgets } from './runtime/uiWidgets.mjs'
 import crypto from 'node:crypto'
 
 function isRecord(v) {
@@ -85,30 +86,6 @@ const FRONTEND_ONLY_NODE_TYPES = new Set([
 	'QuickNodes',
 	'TextNote',
 	'StickyNote'
-])
-
-const SOCKET_TYPES = new Set([
-	'MODEL',
-	'CLIP',
-	'VAE',
-	'CONDITIONING',
-	'LATENT',
-	'IMAGE',
-	'MASK',
-	'SAMPLER',
-	'SIGMAS',
-	'AUDIO',
-	'VIDEO',
-	'CLIP_VISION_OUTPUT',
-	'CONTROL_NET',
-	'STYLE_MODEL',
-	'CLIP_VISION',
-	'GLIGEN',
-	'BOOLEAN',
-	'STRING',
-	'INT',
-	'FLOAT',
-	'NUMBER'
 ])
 
 function isVirtualOrIgnorableNode(ntype, nid) {
@@ -240,139 +217,6 @@ function getPrimitiveNodeValue(node) {
 		}
 	}
 	return undefined
-}
-
-function extractObjectInfoInputDefs(info) {
-	if (!isRecord(info)) return {}
-	const raw = info.input
-	if (!isRecord(raw)) return {}
-	const out = {}
-	for (const bucket of ['required', 'optional']) {
-		const b = raw[bucket]
-		if (!isRecord(b)) continue
-		for (const [k, v] of Object.entries(b)) {
-			out[k] = v
-		}
-	}
-	return out
-}
-
-function isObjectInfoWidgetDef(defn) {
-	if (!Array.isArray(defn) || defn.length === 0) return false
-	const t = defn[0]
-	if (Array.isArray(t)) return true
-	if (typeof t === 'string') {
-		const tt = t.toUpperCase()
-		if (SOCKET_TYPES.has(tt)) {
-			if (tt === 'BOOLEAN' || tt === 'STRING' || tt === 'INT' || tt === 'FLOAT' || tt === 'NUMBER')
-				return true
-			return false
-		}
-		return true
-	}
-	return false
-}
-
-function objectInfoValueFits(defn, value) {
-	if (!Array.isArray(defn) || defn.length === 0) return false
-	const t = defn[0]
-	if (Array.isArray(t)) {
-		if (typeof value === 'string') return t.includes(value)
-		return false
-	}
-	if (typeof t !== 'string') return false
-	const tt = t.toUpperCase()
-	if (tt === 'INT') {
-		if (typeof value === 'boolean') return false
-		if (typeof value === 'number' && Number.isInteger(value)) return true
-		if (typeof value === 'string') {
-			const s = value.trim()
-			return /^-?\d+$/.test(s)
-		}
-		return false
-	}
-	if (tt === 'FLOAT' || tt === 'NUMBER') {
-		if (typeof value === 'boolean') return false
-		if (typeof value === 'number') return true
-		if (typeof value === 'string') {
-			try {
-				return !isNaN(parseFloat(value.trim()))
-			} catch {
-				return false
-			}
-		}
-		return false
-	}
-	if (tt === 'BOOLEAN' || tt === 'BOOL') {
-		if (typeof value === 'boolean') return true
-		if (typeof value === 'number') return true
-		if (typeof value === 'string') {
-			const v = value.trim().toLowerCase()
-			return ['true', 'false', 'enable', 'disable', 'enabled', 'disabled', '1', '0'].includes(v)
-		}
-		return false
-	}
-	if (tt === 'STRING') return typeof value === 'string'
-	return typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean'
-}
-
-function objectInfoCoerceValue(defn, value) {
-	if (!Array.isArray(defn) || defn.length === 0) return value
-	const t = defn[0]
-	if (Array.isArray(t)) {
-		if (typeof value === 'string' && t.includes(value)) return value
-		const d = defn[1]?.default
-		return d !== undefined ? d : value
-	}
-	if (typeof t !== 'string') return value
-	const tt = t.toUpperCase()
-	if (tt === 'INT') {
-		if (
-			typeof value === 'number' &&
-			!Number.isNaN(value) &&
-			Number.isFinite(value) &&
-			typeof value !== 'boolean'
-		)
-			return Math.trunc(value)
-		if (typeof value === 'string') {
-			try {
-				const n = parseInt(value.trim(), 10)
-				if (!isNaN(n)) return n
-			} catch {}
-		}
-		const d = defn[1]?.default
-		return d !== undefined ? d : value
-	}
-	if (tt === 'FLOAT' || tt === 'NUMBER') {
-		if (
-			typeof value === 'number' &&
-			!Number.isNaN(value) &&
-			Number.isFinite(value) &&
-			typeof value !== 'boolean'
-		)
-			return value
-		if (typeof value === 'string') {
-			try {
-				const n = parseFloat(value.trim())
-				if (!isNaN(n)) return n
-			} catch {}
-		}
-		const d = defn[1]?.default
-		return d !== undefined ? d : value
-	}
-	if (tt === 'BOOLEAN' || tt === 'BOOL') {
-		if (typeof value === 'boolean') return value
-		if (typeof value === 'number') return Boolean(value)
-		if (typeof value === 'string') {
-			const v = value.trim().toLowerCase()
-			if (['true', 'enable', 'enabled', '1'].includes(v)) return true
-			if (['false', 'disable', 'disabled', '0'].includes(v)) return false
-		}
-		const d = defn[1]?.default
-		return d !== undefined ? d : value
-	}
-	if (tt === 'STRING') return String(value)
-	return value
 }
 
 function collectAllSubgraphDefs(workflow) {
@@ -795,6 +639,17 @@ export function buildPromptFromFlat(flatNodes, flatLinks, objectInfo) {
 
 	for (const [nid, node] of nodeMap) {
 		const ct = String(node.type || '').trim()
+		if (node.mode === 2 || node.mode === 4) {
+			rerouteNodeIds.add(nid)
+			continue
+		}
+		if (
+			validTypes.has(ct) &&
+			ct !== 'PrimitiveNode' &&
+			!isRelayNodeType(ct) &&
+			!isVirtualOrIgnorableNode(ct, nid)
+		)
+			continue
 		if (structurallyLooksLikeNote(node)) {
 			if (!structurallyLooksLikePrimitive(node) && !structurallyLooksLikeReroute(node)) {
 				rerouteNodeIds.add(nid)
@@ -833,12 +688,16 @@ export function buildPromptFromFlat(flatNodes, flatLinks, objectInfo) {
 		const ct = String(node.type || '').trim()
 		if (!ct) continue
 		if (
-			structurallyLooksLikeNote(node) ||
-			structurallyLooksLikePrimitive(node) ||
-			structurallyLooksLikeReroute(node)
+			(!validTypes.has(ct) ||
+				ct === 'PrimitiveNode' ||
+				isRelayNodeType(ct) ||
+				isVirtualOrIgnorableNode(ct, nid)) &&
+			(structurallyLooksLikeNote(node) ||
+				structurallyLooksLikePrimitive(node) ||
+				structurallyLooksLikeReroute(node))
 		)
 			continue
-		if (FRONTEND_ONLY_NODE_TYPES.has(ct)) continue
+		if (!validTypes.has(ct) && FRONTEND_ONLY_NODE_TYPES.has(ct)) continue
 		finalPromptNodeIds.add(nid)
 		if (!validTypes.has(ct)) {
 			unknownTypes.add(ct)
@@ -875,7 +734,7 @@ export function buildPromptFromFlat(flatNodes, flatLinks, objectInfo) {
 			return { nodeId: origin_id, slot: origin_slot }
 		}
 		const relayNode = nodeMap.get(origin_id)
-		if (!isRecord(relayNode)) return null
+		if (!isRecord(relayNode) || relayNode.mode === 2) return null
 
 		const relayNodeId = String(relayNode.id)
 		const relayInputs = Array.isArray(relayNode.inputs) ? relayNode.inputs : []
@@ -946,28 +805,16 @@ export function buildPromptFromFlat(flatNodes, flatLinks, objectInfo) {
 
 	const prompt = {}
 	const unresolvedConnections = []
+	const widgetWarnings = []
 
 	for (const [nid, node] of nodeMap) {
 		if (!finalPromptNodeIds.has(nid)) continue
 		const classType = String(node.type || '').trim()
 		if (!classType) continue
 
-		const objDefs = extractObjectInfoInputDefs(objectInfo[classType])
-
 		const inputsList = Array.isArray(node.inputs) ? node.inputs : []
-		const widgetValues = Array.isArray(node.widgets_values) ? [...node.widgets_values] : []
 		const inputs = {}
 		const linkedNames = new Set()
-
-		const inputWidgetValues = new Map()
-		for (const inp of inputsList) {
-			if (!isRecord(inp)) continue
-			const inpName = String(inp.name || '').trim()
-			if (!inpName) continue
-			if (isRecord(inp.widget) && 'value' in inp.widget) {
-				inputWidgetValues.set(inpName, inp.widget.value)
-			}
-		}
 
 		for (let si = 0; si < inputsList.length; si++) {
 			const inp = inputsList[si]
@@ -1022,67 +869,9 @@ export function buildPromptFromFlat(flatNodes, flatLinks, objectInfo) {
 			}
 		}
 
-		if (inputWidgetValues.size > 0) {
-			for (const [wname, wval] of inputWidgetValues) {
-				if (wname in inputs || linkedNames.has(wname)) continue
-				inputs[wname] = wval
-			}
-		}
-
-		const orderedWidgetNames = []
-		if (Object.keys(objDefs).length > 0) {
-			for (const inp of inputsList) {
-				if (!isRecord(inp)) continue
-				const name = String(inp.name || '').trim()
-				if (!name || linkedNames.has(name) || name in inputs) continue
-				if (!isObjectInfoWidgetDef(objDefs[name])) continue
-				orderedWidgetNames.push(name)
-			}
-		}
-
-		if (orderedWidgetNames.length > 0 && widgetValues.length > 0) {
-			let idx = 0
-			for (const name of orderedWidgetNames) {
-				if (name in inputs) continue
-				const defn = objDefs[name]
-				let assigned = false
-				while (idx < widgetValues.length) {
-					const cand = widgetValues[idx]
-					if (objectInfoValueFits(defn, cand)) {
-						inputs[name] = objectInfoCoerceValue(defn, cand)
-						idx++
-						assigned = true
-						break
-					}
-					idx++
-				}
-				if (!assigned) {
-					const d = defn?.[1]?.default
-					if (d !== undefined) inputs[name] = d
-				}
-			}
-		} else {
-			let valueIdx = 0
-			for (let si = 0; si < inputsList.length; si++) {
-				const inp = inputsList[si]
-				if (!isRecord(inp)) continue
-				const name = String(inp.name || '').trim()
-				if (!name || name in inputs) continue
-				if (inputHasConnection(inp, nid, si)) continue
-				const inpType = String(inp.type || '')
-					.trim()
-					.toUpperCase()
-				const isKnownSocket =
-					/^(MODEL|CLIP|VAE|CONDITIONING|LATENT|IMAGE|MASK|SAMPLER|SIGMAS|AUDIO|VIDEO|CLIP_VISION_OUTPUT|CONTROL_NET|STYLE_MODEL|CLIP_VISION|UPSCALE_MODEL|GLIGEN|NOISE|GUIDER|BOOST|WEBCAM|IPADAPTER|FACEID|INSTANTID|FACEMASK)$/.test(
-						inpType
-					)
-				if (isKnownSocket) continue
-				if (valueIdx < widgetValues.length) {
-					inputs[name] = widgetValues[valueIdx]
-					valueIdx++
-				}
-			}
-		}
+		const widgets = readUiWidgets(node, objectInfo[classType], linkedNames)
+		Object.assign(inputs, widgets.inputs)
+		widgetWarnings.push(...widgets.warnings)
 
 		const nodeMeta = isRecord(node._meta) ? { ...node._meta } : {}
 		if (node.title && !nodeMeta.title) nodeMeta.title = String(node.title)
@@ -1108,7 +897,8 @@ export function buildPromptFromFlat(flatNodes, flatLinks, objectInfo) {
 				)
 			: undefined
 
-	return { prompt, error, warnings }
+	const allWarnings = [...(warnings || []), ...widgetWarnings]
+	return { prompt, error, warnings: allWarnings.length ? allWarnings : undefined }
 }
 
 export function workflowToPrompt(workflow, objectInfo) {

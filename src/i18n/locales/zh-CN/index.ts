@@ -1,4 +1,4 @@
-import type { LocalePackage } from '../../types'
+﻿import type { LocalePackage } from '../../types'
 import common from './common.json'
 import titlebar from './titlebar.json'
 import menu from './menu.json'
@@ -51,6 +51,7 @@ import nodesMeshy from './nodes/meshy.json'
 import nodesSceneUnderstanding from './nodes/sceneUnderstanding.json'
 import nodesSceneDecompose from './nodes/sceneDecompose.json'
 import nodesSceneLayout from './nodes/sceneLayout.json'
+import nodesDirectorConsole from './nodes/directorConsole.json'
 import nodesUnreal from './nodes/unreal.json'
 import nodesRotateImage from './nodes/rotateImage.json'
 import nodesImageMarkup from './nodes/imageMarkup.json'
@@ -122,6 +123,7 @@ const messages = {
 	...nodesSceneUnderstanding,
 	...nodesSceneDecompose,
 	...nodesSceneLayout,
+	...nodesDirectorConsole,
 	...nodesUnreal,
 	...nodesRotateImage,
 	...nodesImageMarkup,

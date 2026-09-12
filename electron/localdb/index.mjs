@@ -7,6 +7,7 @@ import {
 } from './db.mjs'
 import { ensureLocalDbSchema } from './migrations.mjs'
 import { createProjectsRepo } from './repos/projects.mjs'
+import { createDeepSeekHarnessProfilesRepo } from './repos/deepseekHarnessProfiles.mjs'
 import { createMeshyTasksRepo } from './repos/meshyTasks.mjs'
 import { createVideoTasksRepo } from './repos/videoTasks.mjs'
 import { createArkTasksRepo } from './repos/arkTasks.mjs'
@@ -16,6 +17,7 @@ import { createChatConversationsRepo } from './repos/chatConversations.mjs'
 import { createExportJobsRepo } from './repos/exportJobs.mjs'
 import { createEditorComponentsRepo } from './repos/editorComponents.mjs'
 import { createComfyuiWorkflowsRepo } from './repos/comfyuiWorkflows.mjs'
+import { createComfyuiHistorySnapshotsRepo } from './repos/comfyuiHistorySnapshots.mjs'
 import { createComfyuiJobsRepo } from './repos/comfyuiJobs.mjs'
 import { createRefImageCacheRepo } from './repos/refImageCache.mjs'
 import { createAiworkflowTemplatesRepo } from './repos/aiworkflowTemplates.mjs'
@@ -73,6 +75,7 @@ function tryInitOnce(dbFilePath, baseDir, appSecret, tag) {
 			appSecret: appSecret || baseDir || 'localdb'
 		})
 		reposSnapshot = {
+			deepseekHarnessProfiles: createDeepSeekHarnessProfilesRepo(),
 			projects,
 			meshyTasks,
 			videoTasks,
@@ -85,6 +88,7 @@ function tryInitOnce(dbFilePath, baseDir, appSecret, tag) {
 			exportJobs,
 			editorComponents,
 			comfyuiWorkflows,
+			comfyuiHistorySnapshots: createComfyuiHistorySnapshotsRepo(),
 			comfyuiJobs,
 			refImageCache,
 			aiworkflowTemplates,

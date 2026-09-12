@@ -1,3 +1,12 @@
+import {
+	scanHistory,
+	historyListItem,
+	historyTimestamp,
+	normalizeHistoryEntry
+} from './runtime/historyCatalog.mjs'
+import { resolveTemplate } from './runtime/templateResolver.mjs'
+import { executionGraph, validatePromptInputs } from './runtime/executionGraph.mjs'
+import { bindText, bindUploadedFiles, refineTextMappings } from './runtime/inputBindings.mjs'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -2596,23 +2605,7 @@ function extractCreateTimeFromExtra(extra) {
 }
 
 function extractEntryTimestamp(entry) {
-	if (!isRecord(entry)) return 0
-	try {
-		const status = entry.status
-		if (isRecord(status) && Array.isArray(status.messages) && status.messages.length > 0) {
-			const firstMsg = status.messages[0]
-			if (Array.isArray(firstMsg) && firstMsg.length > 0) {
-				const ts = Number(firstMsg[0])
-				if (Number.isFinite(ts) && ts > 0) return ts * 1000
-			}
-		}
-	} catch {}
-	const promptArr = Array.isArray(entry?.prompt) ? entry.prompt : null
-	if (promptArr && promptArr.length >= 4) {
-		const ct = extractCreateTimeFromExtra(promptArr[3])
-		if (ct > 0) return ct
-	}
-	return 0
+	return historyTimestamp(entry)
 }
 
 function isEntrySuccessful(entry) {
@@ -2960,6 +2953,188 @@ function getLocalWorkflowData(ctx, id) {
 }
 
 export async function runtimeListWorkflowFiles(ctx, payload) {
+	const { base, error } = normalizeBaseUrl(payload?.baseUrl || getBaseUrl(ctx))
+	if (error) return { ok: false, error }
+	if (process.env.DVS_COMFY_LEGACY_RESOLVER === '1') return legacyListWorkflowFiles(ctx, payload)
+	const [files, catalog] = await Promise.all([
+		comfyJsonGet(ctx.httpClient, base + '/userdata?dir=workflows&recurse=true', 10000),
+		scanHistory(ctx.httpClient, base, ctx.localdb?.comfyuiHistorySnapshots)
+	])
+	const workflows = [
+		...listLocalWorkflowItems(ctx),
+		...(Array.isArray(files.data) ? filterWorkflowFiles(files.data) : []),
+		...catalog.entries.map(historyListItem)
+	]
+	const warnings = [...catalog.warnings]
+	if (files.error) warnings.push('已保存模板列表读取失败：' + files.error)
+	if (catalog.failure) warnings.push(catalog.failure.message)
+	return {
+		ok: workflows.length > 0 || !catalog.failure,
+		baseUrl: base,
+		workflows,
+		error: workflows.length ? undefined : catalog.failure?.error,
+		message: catalog.failure?.message,
+		scanComplete: catalog.complete,
+		scannedCount: catalog.scannedCount,
+		warnings,
+		source: 'merged'
+	}
+}
+
+async function resolveRuntimeTemplate(ctx, payload) {
+	const { base, error } = normalizeBaseUrl(payload?.baseUrl || getBaseUrl(ctx))
+	if (error) return { ok: false, error }
+	const workflowPath = String(payload?.workflowPath || '').trim()
+	if (!workflowPath) return { ok: false, error: 'workflowPath is required' }
+	const resolved = await resolveTemplate({
+		client: ctx.httpClient,
+		base,
+		workflowPath,
+		repo: ctx.localdb?.comfyuiHistorySnapshots,
+		snapshotId: payload.snapshotId,
+		readWorkflow: () => runtimeGetWorkflowFile(ctx, { baseUrl: base, workflowPath })
+	})
+	return { ...resolved, baseUrl: base }
+}
+
+export async function runtimeResolveHistoryPrompt(ctx, payload) {
+	if (process.env.DVS_COMFY_LEGACY_RESOLVER === '1') return legacyResolveHistoryPrompt(ctx, payload)
+	const resolved = await resolveRuntimeTemplate(ctx, payload)
+	if (!resolved.ok) return resolved
+	const info = refineTextMappings(resolved.promptGraph, analyzeInputNodes(resolved.promptGraph))
+	return {
+		...resolved,
+		matchType: resolved.promptId ? 'exact' : 'direct',
+		nodeCount: info.nodeCount,
+		imageInputs: info.images,
+		videoInputs: info.videos,
+		textNodes: info.textNodes,
+		seedNodes: info.seedNodes,
+		outputs: info.outputs,
+		hasTextPrompt: info.hasTextPrompt,
+		textNodeCount: info.textNodeCount,
+		positiveTextCount: info.positiveTextCount,
+		negativeTextCount: info.negativeTextCount,
+		hasImageOutput: info.hasImageOutput,
+		hasVideoOutput: info.hasVideoOutput,
+		hasModel3dOutput: info.hasModel3dOutput,
+		source: resolved.resolution.source
+	}
+}
+
+export async function runtimeRunWorkflow(ctx, payload) {
+	if (process.env.DVS_COMFY_LEGACY_RESOLVER === '1') return legacyRunWorkflow(ctx, payload)
+	const p = payload || {}
+	const resolved = await resolveRuntimeTemplate(ctx, p)
+	if (!resolved.ok) return resolved
+	if (
+		(p.contentHash && p.contentHash !== resolved.resolution.contentHash) ||
+		(p.workflowHash && p.workflowHash !== resolved.resolution.workflowHash)
+	) {
+		return { ok: false, error: 'STALE_TEMPLATE', message: '模板已改变，请刷新检查后重新运行' }
+	}
+	const schemaResult = await comfyJsonGet(ctx.httpClient, resolved.baseUrl + '/object_info', 10000)
+	if (schemaResult.error)
+		return { ok: false, error: 'OBJECT_INFO_UNREACHABLE', message: schemaResult.error }
+	const graph = JSON.parse(JSON.stringify(executionGraph(resolved.promptGraph, schemaResult.data)))
+	const inputErrors = validatePromptInputs(graph, schemaResult.data)
+	if (inputErrors.length)
+		return {
+			ok: false,
+			error: 'INVALID_TEMPLATE_INPUTS',
+			message: '执行图参数不完整，请重新选择保存的模板并刷新检查：' + inputErrors.join('；')
+		}
+	const info = refineTextMappings(graph, analyzeInputNodes(graph))
+	const mappings = {
+		imageInputs: info.images,
+		videoInputs: info.videos,
+		textNodes: info.textNodes,
+		seedNodes: info.seedNodes
+	}
+	const files = Array.isArray(p.files) ? p.files : []
+	let textWriteDiagnostics
+	try {
+		// Validate all destinations before uploading files or enqueuing any task.
+		bindUploadedFiles(
+			JSON.parse(JSON.stringify(graph)),
+			mappings,
+			files.map((f) => ({ ...f, mediaType: f.mediaType || 'image', path: 'validation-only' }))
+		)
+		textWriteDiagnostics = bindText(graph, mappings, p)
+	} catch (err) {
+		return { ok: false, error: 'INVALID_INPUT_BINDING', message: err.message }
+	}
+	const uploaded = []
+	for (let i = 0; i < files.length; i++) {
+		const f = files[i]
+		const match = String(f.dataUrl || '').match(/^data:([^;]+);base64,([\s\S]+)$/)
+		const content = match
+			? Buffer.from(match[2], 'base64')
+			: f.content
+				? Buffer.from(f.content)
+				: null
+		if (!content?.length)
+			return { ok: false, error: 'INVALID_INPUT_FILE', message: '输入文件为空或无法读取' }
+		const result = await uploadImageToComfyui(
+			ctx.httpClient,
+			resolved.baseUrl,
+			String(f.name || f.filename || 'input_' + i),
+			content,
+			match?.[1] || f.mimeType || 'application/octet-stream'
+		)
+		if (result.error) return { ok: false, error: 'UPLOAD_FAILED', message: result.error }
+		const name = String(result.data?.name || '')
+		if (!name) return { ok: false, error: 'UPLOAD_FAILED', message: 'ComfyUI 未返回上传文件名' }
+		const subfolder = String(result.data?.subfolder || '').replace(/\\/g, '/')
+		uploaded.push({
+			mediaType: f.mediaType || 'image',
+			bindingId: f.bindingId,
+			path: subfolder ? subfolder + '/' + name : name
+		})
+	}
+	try {
+		bindUploadedFiles(graph, mappings, uploaded)
+	} catch (err) {
+		return { ok: false, error: 'INVALID_INPUT_BINDING', message: err.message }
+	}
+	randomizeSeedFromMappings(graph, mappings)
+	const submit = await comfyJsonPost(
+		ctx.httpClient,
+		resolved.baseUrl + '/prompt',
+		{
+			prompt: graph,
+			...(info.outputs.length
+				? { partial_execution_targets: info.outputs.map((output) => String(output.nodeId)) }
+				: {}),
+			client_id: crypto.randomBytes(16).toString('hex'),
+			extra_data: { extra_pnginfo: { workflow: resolved.workflow || {} }, create_time: Date.now() }
+		},
+		30000
+	)
+	if (submit.error)
+		return {
+			ok: false,
+			error: 'COMFY_SUBMIT_FAILED',
+			message: submit.error,
+			status: submit.status || 502,
+			comfyuiError: submit.body,
+			textWriteDiagnostics
+		}
+	const promptId = String(submit.data?.prompt_id || '').trim()
+	if (!promptId)
+		return { ok: false, error: 'INVALID_PROMPT_RESPONSE', message: 'ComfyUI 未返回任务 ID' }
+	return {
+		ok: true,
+		baseUrl: resolved.baseUrl,
+		promptId,
+		promptSource: resolved.resolution.source,
+		resolution: resolved.resolution,
+		result: submit.data,
+		textWriteDiagnostics
+	}
+}
+
+async function legacyListWorkflowFiles(ctx, payload) {
 	const client = ctx.httpClient
 	const p = payload || {}
 	const { base, error: baseErr } = normalizeBaseUrl(p.baseUrl || getBaseUrl(ctx))
@@ -3027,31 +3202,13 @@ export async function runtimeGetHistoryWorkflow(ctx, payload) {
 	const promptId = String(p.promptId || '').trim()
 	if (!promptId) return { ok: false, error: 'promptId is required' }
 
-	const histUrl = `${base}/history/${encodeURIComponent(promptId)}`
-	const histResult = await comfyJsonGet(client, histUrl, 10000)
-	if (histResult.error || !isRecord(histResult.data)) {
-		return { ok: false, error: `failed to fetch history: ${histResult.error || 'unknown error'}` }
-	}
-
-	const entry = histResult.data[promptId]
-	if (!isRecord(entry)) {
-		return { ok: false, error: `history entry ${promptId} not found` }
-	}
-
-	const promptArr = entry.prompt
-	if (!Array.isArray(promptArr) || promptArr.length < 3 || !isRecord(promptArr[2])) {
-		return { ok: false, error: 'history entry does not contain valid prompt graph' }
-	}
-	const promptGraph = promptArr[2]
-
-	let workflow = null
-	if (Array.isArray(promptArr) && promptArr.length >= 4 && isRecord(promptArr[3])) {
-		const extra = promptArr[3]
-		const epi = extra.extra_pnginfo
-		if (isRecord(epi) && isRecord(epi.workflow)) {
-			workflow = epi.workflow
-		}
-	}
+	const resolved = await resolveRuntimeTemplate(ctx, {
+		baseUrl: base,
+		workflowPath: 'history://' + promptId
+	})
+	if (!resolved.ok) return resolved
+	const promptGraph = resolved.promptGraph
+	let workflow = resolved.workflow
 
 	if (!workflow) {
 		workflow = { nodes: [], links: [], groups: [], config: {}, extra: {}, version: 0.4 }
@@ -3148,7 +3305,7 @@ export async function runtimeGetHistoryWorkflow(ctx, payload) {
 	return { ok: true, baseUrl: base, workflowPath, workflow, promptGraph, source: 'history' }
 }
 
-export async function runtimeResolveHistoryPrompt(ctx, payload) {
+async function legacyResolveHistoryPrompt(ctx, payload) {
 	const client = ctx.httpClient
 	const p = payload || {}
 	const { base, error: baseErr } = normalizeBaseUrl(p.baseUrl || getBaseUrl(ctx))
@@ -3393,6 +3550,7 @@ function analyzeInputNodes(promptGraph) {
 	function detectFileKind(classType, key, val) {
 		if (isSocketValue(val)) return null
 		if (typeof val !== 'string') return null
+		if (/Load.*Audio|Audio.*Load/i.test(classType) || key === 'audio') return null
 		const base = val.split(/[\\/]/).pop() || val
 		if (IMAGE_EXTS.test(base)) return 'image'
 		if (VIDEO_EXTS.test(base)) return 'video'
@@ -4105,7 +4263,7 @@ export async function runtimeGetWorkflowFile(ctx, payload) {
 	}
 }
 
-export async function runtimeRunWorkflow(ctx, payload) {
+async function legacyRunWorkflow(ctx, payload) {
 	const client = ctx.httpClient
 	const p = payload || {}
 	const { base, error: baseErr } = normalizeBaseUrl(p.baseUrl || getBaseUrl(ctx))
@@ -5007,6 +5165,12 @@ export async function runtimeGetOutputs(ctx, payload) {
 	if (result.error || !isRecord(result.data)) {
 		return { ok: false, error: `ComfyUI /history failed: ${result.error || 'unknown error'}` }
 	}
+	const completed = normalizeHistoryEntry(promptId, result.data?.[promptId])
+	if (completed) {
+		try {
+			ctx.localdb?.comfyuiHistorySnapshots?.save(base, completed)
+		} catch {}
+	}
 	const media = extractMediaFromHistoryResult(base, result.data, promptId)
 	return { ok: true, baseUrl: base, promptId, media, result: result.data }
 }
@@ -5048,9 +5212,12 @@ export async function runtimeGetJobStatus(ctx, payload) {
 			.trim()
 			.toLowerCase()
 		if (!statusText && (detailText.includes('not found') || detailText.includes('missing'))) {
-			return { ok: true, baseUrl: base, result: { id: jobId, status: 'not_found' } }
+			// Older servers expose the endpoint without retaining all job records.
+		} else if (
+			['pending', 'in_progress', 'completed', 'failed', 'cancelled'].includes(statusText)
+		) {
+			return { ok: true, baseUrl: base, result: jobsResult.data }
 		}
-		return { ok: true, baseUrl: base, result: jobsResult.data }
 	}
 
 	// Fallback to /history/{id}
@@ -5066,12 +5233,32 @@ export async function runtimeGetJobStatus(ctx, payload) {
 		}
 	}
 	if (!(jobId in histResult.data)) {
+		const queue = await comfyJsonGet(client, `${base}/queue`, 10000)
+		if (queue.error) return { ok: false, error: `ComfyUI /queue failed: ${queue.error}` }
+		const contains = (rows) => Array.isArray(rows) && rows.some((row) => String(row?.[1]) === jobId)
+		const status = contains(queue.data?.queue_running)
+			? 'in_progress'
+			: contains(queue.data?.queue_pending)
+				? 'pending'
+				: 'not_found'
 		return {
 			ok: true,
 			baseUrl: base,
 			fallback: 'history',
-			result: { id: jobId, status: 'not_found' }
+			result: { id: jobId, status }
 		}
 	}
-	return { ok: true, baseUrl: base, fallback: 'history', result: histResult.data }
+	const entry = histResult.data[jobId]
+	const successful = normalizeHistoryEntry(jobId, entry)
+	const interrupted = entry?.status?.messages?.some((m) => m?.[0] === 'execution_interrupted')
+	return {
+		ok: true,
+		baseUrl: base,
+		fallback: 'history',
+		result: {
+			id: jobId,
+			status: successful ? 'completed' : interrupted ? 'cancelled' : 'failed',
+			outputs_count: extractMediaFromHistoryResult(base, histResult.data, jobId).length
+		}
+	}
 }

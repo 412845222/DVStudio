@@ -704,7 +704,13 @@ const requestAutoResize = () => {
 		//   - Blender 节点：仅在底部对话框实际可见时允许叠加高度（否则也应 return），
 		//     避免在用户已锁定基础画布高度的场景下抖动或越界。
 		if (props.autoHeight === false) {
-			if (props.nodeType !== 'blender') return
+			if (props.nodeType !== 'blender') {
+				if (props.nodeType === 'video') {
+					// eslint-disable-next-line no-console
+					console.info(`[WFSize][autoResize] skip(autoHeight=false) id=${props.nodeId}`)
+				}
+				return
+			}
 			if (!nodeChatVisibleResolved.value) return
 		}
 		// 用户已手动拖拽缩放：同样只允许 Blender 对话框展开场景叠加
@@ -731,17 +737,16 @@ const requestAutoResize = () => {
 		)
 			return
 		lastEmittedHeight = finalHeight
+		// eslint-disable-next-line no-console
+		console.info(
+			`[WFSize][autoResize] id=${props.nodeId} type=${props.nodeType} natural=${nextHeight} final=${finalHeight}`
+		)
 		const el = nodeElRef.value
 		if (el) {
+			// 仅设置自身业务壳高度；禁止改写 .dom-node-wrapper 的内联样式——
+			// wrapper 尺寸由 overlay 的 Vue 绑定（node.data）唯一驱动，
+			// 内联强写会覆盖拖拽 resize 的实时高度（首拖尺寸不生效的历史根因之一）
 			el.style.setProperty('height', `${finalHeight}px`, 'important')
-			let parent = el.parentElement
-			while (parent) {
-				if (parent.classList?.contains('dom-node-wrapper')) {
-					parent.style.setProperty('height', `${finalHeight}px`, 'important')
-					break
-				}
-				parent = parent.parentElement
-			}
 		}
 		emit('auto-resize', finalHeight)
 	})
@@ -913,6 +918,12 @@ watch(
 	(customized) => {
 		if (customized) {
 			teardownResizeObserver()
+			// 尺寸转为定制模式：清除 auto-height 遗留的内联高度覆盖，
+			// 让卡片高度立即交还 overlay 的 Vue 绑定（修复首拖 resize 尺寸不生效）
+			const el = nodeElRef.value
+			if (el) {
+				el.style.removeProperty('height')
+			}
 		} else if (props.autoHeight !== false) {
 			nextTick(() => {
 				setupResizeObserver()

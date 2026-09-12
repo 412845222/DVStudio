@@ -1,0 +1,18 @@
+{
+	"name": "dvscli",
+	"version": "0.2.4",
+	"description": "DVStudio 本地跨进程 CLI 控制接口",
+	"type": "module",
+	"bin": {
+		"dvscli": "./bin/dvscli.mjs"
+	},
+	"engines": {
+		"node": ">=16"
+	},
+	"dependencies": {},
+	"scripts": {
+		"start": "node bin/dvscli.mjs",
+		"dev:status": "node bin/dvscli.mjs status --json",
+		"dev:help": "node bin/dvscli.mjs help --json"
+	}
+}
