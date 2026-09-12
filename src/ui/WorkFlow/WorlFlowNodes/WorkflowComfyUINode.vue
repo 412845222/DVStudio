@@ -145,6 +145,14 @@
 					<div class="wf-comfy-workflows-header">
 						<div class="wf-comfy-label">{{ t('nodes.comfyui.availableWorkflows') }}</div>
 						<button
+							class="wf-comfy-btn wf-comfy-btn-xs"
+							type="button"
+							:disabled="status !== 'connected' || runStatus === 'running'"
+							@click.stop="onRefreshHistory"
+						>
+							刷新模板与成功历史
+						</button>
+						<button
 							class="wf-comfy-btn wf-comfy-btn-xs wf-comfy-btn-ghost wf-comfy-manage-btn"
 							type="button"
 							:title="t('nodes.comfyui.manageLocalWorkflows')"
@@ -159,7 +167,7 @@
 					<select
 						class="wf-comfy-select"
 						:value="workflowPath"
-						:disabled="!workflows.length"
+						:disabled="!workflows.length || runStatus === 'running' || runStatus === 'canceling'"
 						@change="onWorkflowChange"
 					>
 						<option value="" disabled>
@@ -193,7 +201,7 @@
 						<span class="wf-comfy-history-dot" />
 						<span>{{ t('nodes.comfyui.historyChecking') }}</span>
 					</div>
-					<div v-else-if="hasHistory" class="wf-comfy-history-status ready">
+					<div v-else-if="templateReady" class="wf-comfy-history-status ready">
 						<span class="wf-comfy-history-dot" />
 						<span class="wf-comfy-history-text">{{ historyStatusText }}</span>
 						<button
@@ -227,8 +235,39 @@
 							</button>
 						</div>
 					</div>
-					<div v-if="hasHistory && historyInputSummary" class="wf-comfy-history-inputs">
+					<div v-if="templateReady && historyInputSummary" class="wf-comfy-history-inputs">
 						{{ historyInputSummary }}
+					</div>
+					<div v-if="templateReady && bindingFields.length" class="wf-comfy-history-inputs">
+						<div v-for="(field, index) in bindingFields" :key="field.key">
+							{{ field.mediaType === 'image' ? '图片' : '视频' }} {{ index + 1 }} →
+							{{ field.label }}
+						</div>
+						<div
+							v-for="(target, edge, index) in comfyuiSettings?.inputBindings"
+							:key="edge"
+							:title="String(edge)"
+						>
+							<label>
+								连接 {{ index + 1 }}
+								<select
+									class="wf-comfy-select"
+									:value="target"
+									:disabled="runStatus === 'running' || runStatus === 'canceling'"
+									@change="onBindingChange(String(edge), $event)"
+								>
+									<option
+										v-for="field in bindingFields.filter(
+											(f) => f.mediaType === bindingFields.find((x) => x.key === target)?.mediaType
+										)"
+										:key="field.key"
+										:value="field.key"
+									>
+										{{ field.label }}
+									</option>
+								</select>
+							</label>
+						</div>
 					</div>
 				</div>
 
@@ -770,6 +809,12 @@ const props = defineProps<{
 		lastUpdateAt?: number
 		hasHistory?: boolean
 		historyChecked?: boolean
+		templateResolution?: { contentHash: string; source: string }
+		inputBindings?: Record<string, string>
+		historyInputMappings?: {
+			imageInputs?: Array<{ nodeId: string; inputKey: string; displayName?: string }>
+			videoInputs?: Array<{ nodeId: string; inputKey: string; displayName?: string }>
+		}
 		historyError?: string
 		historyGuideMessage?: string
 		historyGuideBaseUrl?: string
@@ -885,6 +930,7 @@ const emit = defineEmits<{
 			positivePrompt?: string
 			negativePrompt?: string
 			autoWireEnabled?: boolean
+			inputBindings?: Record<string, string>
 		}
 	): void
 	(e: 'connect-comfyui', payload: { baseUrl: string }): void
@@ -978,6 +1024,36 @@ const runDisabled = computed(() => {
 
 const historyChecked = computed(() => props.comfyuiSettings?.historyChecked === true)
 const hasHistory = computed(() => props.comfyuiSettings?.hasHistory === true)
+const templateReady = computed(
+	() =>
+		Boolean(props.comfyuiSettings?.templateResolution?.contentHash) &&
+		!props.comfyuiSettings?.historyError
+)
+const bindingFields = computed(() =>
+	[
+		...(props.comfyuiSettings?.historyInputMappings?.imageInputs || []).map((m) => ({
+			...m,
+			mediaType: 'image'
+		})),
+		...(props.comfyuiSettings?.historyInputMappings?.videoInputs || []).map((m) => ({
+			...m,
+			mediaType: 'video'
+		}))
+	].map((m) => ({
+		key: m.nodeId + ':' + m.inputKey,
+		mediaType: m.mediaType,
+		label: '[' + m.nodeId + '] ' + (m.displayName || m.inputKey)
+	}))
+)
+function onBindingChange(edge: string, event: Event) {
+	const bindings = { ...props.comfyuiSettings?.inputBindings }
+	const target = (event.target as HTMLSelectElement).value
+	const previous = bindings[edge]
+	const occupied = Object.keys(bindings).find((key) => key !== edge && bindings[key] === target)
+	if (occupied) bindings[occupied] = previous
+	bindings[edge] = target
+	emit('update-comfyui-settings', { inputBindings: bindings })
+}
 const historyError = computed(() => String(props.comfyuiSettings?.historyError ?? ''))
 const historyGuideMessage = computed(() => String(props.comfyuiSettings?.historyGuideMessage ?? ''))
 const historyGuideBaseUrl = computed(() => String(props.comfyuiSettings?.historyGuideBaseUrl ?? ''))
@@ -1010,6 +1086,8 @@ const negativeTextCount = computed(() => {
 
 const historyStatusText = computed(() => {
 	if (!historyChecked.value) return t('nodes.comfyui.historyChecking')
+	if (historyError.value) return historyGuideMessage.value || historyError.value
+	if (templateReady.value && !hasHistory.value) return '模板已就绪，可连接输入锚点并启动任务'
 	if (hasHistory.value) {
 		if (historyTimestamp.value) {
 			const d = new Date(historyTimestamp.value)

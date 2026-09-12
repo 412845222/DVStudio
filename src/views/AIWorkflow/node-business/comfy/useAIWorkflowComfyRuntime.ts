@@ -1,3 +1,4 @@
+import type { ComfyTemplateResolution } from '../../../../aiworkflow/types'
 import { ref } from 'vue'
 import type { ComfyBridgeMedia, ComfyLocalizedOutput } from './comfyOutputResolver'
 import { getErrorMessage, isRecord, isString } from '../../../../types/utils'
@@ -14,7 +15,7 @@ type RunState = {
 	text: string
 }
 
-type ComfyInputFile = File | { file: File; mediaType: 'image' | 'video' }
+type ComfyInputFile = File | { file: File; mediaType: 'image' | 'video'; bindingId?: string }
 
 type ComfyService = {
 	run: (
@@ -26,6 +27,9 @@ type ComfyService = {
 			negativePrompt?: string
 			historyPromptId?: string
 			inputMappings?: ComfyInputMappings
+			snapshotId?: string
+			contentHash?: string
+			workflowHash?: string
 		}
 	) => Promise<
 		| {
@@ -91,6 +95,7 @@ type _InputAnchor = { id?: string; [key: string]: unknown }
 type JobStatus = { status?: string; outputs_count?: number; [key: string]: unknown }
 
 export const useAIWorkflowComfyRuntime = (payload: {
+	ensureComfyTemplate?: (nodeId: string) => Promise<boolean>
 	store: {
 		state: {
 			nodesById: Record<string, unknown>
@@ -120,11 +125,16 @@ export const useAIWorkflowComfyRuntime = (payload: {
 		skippedOutputs: Array<{ anchorId: string; reason: string }>
 	}>
 }) => {
+	const fileEdges = new WeakMap<File, string>()
+	const submissions = new Set<string>()
+	let generation = 0
+	const pollTokens = new Map<string, symbol>()
 	const comfyPollTimers = new Map<string, number>()
 	const comfyTerminalNotified = new Set<string>()
 	const comfyPollErrorCounts = new Map<string, number>()
 
 	const stopComfyUIPoll = (nodeId: string) => {
+		pollTokens.delete(nodeId)
 		const timer = comfyPollTimers.get(nodeId)
 		if (timer != null) {
 			window.clearInterval(timer)
@@ -192,7 +202,20 @@ export const useAIWorkflowComfyRuntime = (payload: {
 		comfyTerminalNotified.delete(nodeId)
 		comfyPollErrorCounts.delete(nodeId)
 
+		const token = Symbol(promptId)
+		pollTokens.set(nodeId, token)
+		const isCurrent = () => {
+			const node = payload.store.state.nodesById[nodeId] as ComfyNode | undefined
+			return (
+				pollTokens.get(nodeId) === token &&
+				node?.comfyuiSettings?.promptId === promptId &&
+				node?.comfyuiSettings?.baseUrl === baseUrl
+			)
+		}
+		let ticking = false
 		const tick = async () => {
+			if (ticking || !isCurrent()) return
+			ticking = true
 			try {
 				const nodeRecord = payload.store.state.nodesById[nodeId]
 				const node = nodeRecord as ComfyNode | undefined
@@ -207,6 +230,7 @@ export const useAIWorkflowComfyRuntime = (payload: {
 				}
 
 				const jr = await payload.comfyService.job(baseUrl, promptId)
+				if (!isCurrent()) return
 				if (!jr.ok) {
 					if (isLikelyJobMissing(jr)) {
 						resetComfyNodeToIdle(nodeId, t('nodes.comfyui.jobMissingRestarted'), 'warn')
@@ -271,6 +295,7 @@ export const useAIWorkflowComfyRuntime = (payload: {
 							)
 						}
 						const or = await payload.comfyService.outputs(baseUrl, promptId)
+						if (!isCurrent()) return
 						if (or.ok) {
 							const media = Array.isArray(or.media) ? or.media : []
 							if (typeof console !== 'undefined') {
@@ -291,6 +316,7 @@ export const useAIWorkflowComfyRuntime = (payload: {
 							const dispatchRes = await payload.routeComfyOutputsToConnectedNodes(nodeId, media, {
 								notifyWarnings: next.runStatus !== 'running'
 							})
+							if (!isCurrent()) return
 							const localizedOutputs = Array.isArray(dispatchRes?.outputs)
 								? dispatchRes.outputs
 								: []
@@ -399,6 +425,8 @@ export const useAIWorkflowComfyRuntime = (payload: {
 				}
 			} catch {
 				// ignore transient poll errors
+			} finally {
+				ticking = false
 			}
 		}
 
@@ -531,7 +559,11 @@ export const useAIWorkflowComfyRuntime = (payload: {
 			const edge = edges[i]
 			const fromNodeRecord = payload.store.state.nodesById[edge.fromNodeId ?? '']
 			const fromNode = fromNodeRecord as ComfyNode | undefined
-			if (!fromNode) continue
+			if (!fromNode) throw new Error('上游节点已不存在：' + edge.fromNodeId)
+			const outputAnchor = (
+				fromNode.outputs as Array<{ id: string; mediaType?: string }> | undefined
+			)?.find((a) => a.id === edge.fromAnchorId)
+			if (outputAnchor?.mediaType === 'text' || edge.fromAnchorId?.includes('text')) continue
 			const fromType = String(fromNode.type ?? '').toLowerCase()
 
 			if (fromType === 'text') {
@@ -543,28 +575,30 @@ export const useAIWorkflowComfyRuntime = (payload: {
 
 			const rid = String(fromNode.resourceId ?? '').trim()
 			if (!rid) {
+				if (['image', 'video', 'model3d'].includes(fromType))
+					throw new Error('上游节点尚未提供资源：' + edge.fromNodeId)
 				diag.skippedMissingResourceId++
 				continue
 			}
 			const resourceRecord = payload.store.state.resourcesById[rid]
 			const resource = resourceRecord as ComfyResource | undefined
-			if (!resource) {
-				diag.skippedMissingResource++
-				continue
-			}
+			if (!resource) throw new Error('上游资源不存在：' + rid)
 			const kind = String(resource.kind ?? '').toLowerCase()
 			const name = String(resource.name ?? `input_${i}`)
 			const file = await resourceToFile(resource, name)
-			if (!file) {
-				diag.skippedFileConversion++
-				continue
-			}
+			if (!file) throw new Error('无法读取上游资源：' + name)
+			fileEdges.set(
+				file,
+				String(edge.id || [edge.fromNodeId, edge.fromAnchorId, edge.toAnchorId].join(':'))
+			)
 			if (fromType === 'image' || kind === 'image' || file.type.startsWith('image/')) {
 				result.images.push(file)
 				diag.collectedImages++
 			} else if (fromType === 'video' || kind === 'video' || file.type.startsWith('video/')) {
 				result.videos.push(file)
 				diag.collectedVideos++
+			} else if (kind !== 'text') {
+				throw new Error('暂不支持该媒体的外部输入绑定：' + kind)
 			}
 		}
 
@@ -781,7 +815,13 @@ export const useAIWorkflowComfyRuntime = (payload: {
 		return result
 	}
 
-	const onComfyUIRun = async (nodeId: string) => {
+	const performComfyUIRun = async (nodeId: string) => {
+		const gen = generation
+		if (payload.ensureComfyTemplate && !(await payload.ensureComfyTemplate(nodeId))) {
+			payload.pushToast('无法解析当前模板，请刷新检查或选择一条成功历史', 'warn')
+			return
+		}
+		if (generation !== gen) return
 		if (typeof console !== 'undefined') {
 			console.log(
 				`%c[ComfyUI][RUN] 🚀 onComfyUIRun STARTED nodeId=${nodeId}. ` +
@@ -792,6 +832,10 @@ export const useAIWorkflowComfyRuntime = (payload: {
 		const nodeRecord = payload.store.state.nodesById[nodeId]
 		const node = nodeRecord as ComfyNode | undefined
 		const settings = (node?.comfyuiSettings ?? {}) as {
+			templateResolution?: ComfyTemplateResolution
+			inputBindings?: Record<string, string>
+			positivePromptEdited?: boolean
+			negativePromptEdited?: boolean
 			baseUrl?: string
 			workflowPath?: string
 			positivePrompt?: string
@@ -844,58 +888,6 @@ export const useAIWorkflowComfyRuntime = (payload: {
 		const finalPositivePrompt = positiveCandidateParts.filter(Boolean).join('\n\n')
 		const finalNegativePrompt = negativeCandidateParts.filter(Boolean).join('\n\n')
 
-		// 防御性 WARN：节点声明了 text 类型输入锚点（根据规则：这些锚点只允许连内置 text 节点），
-		// 但最终上游连接的文本全部为空（官方解析器没解析出内容），提示用户可能未连线或文本节点未运行
-		if (
-			incomingTexts.textAnchorsSeen > 0 &&
-			incomingTexts.textAnchorsFilled === 0 &&
-			finalPositivePrompt.length === 0 &&
-			finalNegativePrompt.length === 0 &&
-			typeof console !== 'undefined'
-		) {
-			console.warn(
-				`[ComfyUI][CollectTexts] ⚠️ 当前 comfyui 节点声明了 ${incomingTexts.textAnchorsSeen} 个 text 类型输入锚点，` +
-					`但没有任何一个锚点解析到非空上游文本（上游只允许连 DVStudio 内置 text / rotate-image / ` +
-					`text-merge / scene 节点，不允许连另一个 comfyui 节点）。` +
-					`textAnchorsSeen=${incomingTexts.textAnchorsSeen}, textAnchorsFilled=${incomingTexts.textAnchorsFilled}`
-			)
-		}
-		// 提交前打印 payload 中的 positivePrompt 信息（便于审计）
-		if (typeof console !== 'undefined') {
-			console.log('%c[ComfyUI][RUN] 📝 prompt summary', 'color:#7c3aed;font-weight:bold', {
-				finalPositivePromptLen: finalPositivePrompt.length,
-				finalNegativePromptLen: finalNegativePrompt.length,
-				configuredPromptLen: configuredPositivePrompt.length,
-				anchorPositiveParts: anchorPositiveParts.length,
-				anchorNegativeParts: incomingTexts.negative.length,
-				textAnchorsSeen: incomingTexts.textAnchorsSeen,
-				textAnchorsFilled: incomingTexts.textAnchorsFilled,
-				hasHistoryPromptId: Boolean(settings.historyPromptId),
-				workflowPath
-			})
-			if (finalPositivePrompt.length > 0) {
-				console.log(
-					'%c[ComfyUI][RUN] ✅ finalPositivePrompt (前300字):\n' +
-						finalPositivePrompt.slice(0, 300),
-					'color:#7c3aed'
-				)
-			} else {
-				console.warn(
-					'%c[ComfyUI][RUN] ❌ finalPositivePrompt 是空字符串！anchorPositiveParts=' +
-						`${anchorPositiveParts.length}, configuredPositivePrompt.len=${configuredPositivePrompt.length}` +
-						`\n  若上游确实连接了文本节点 → 请检查 collectComfyInputTexts STEP-A~D 日志`,
-					'color:#b91c1c;font-weight:bold'
-				)
-			}
-			if (finalNegativePrompt.length > 0) {
-				console.log(
-					'%c[ComfyUI][RUN] ➖ finalNegativePrompt (前200字):\n' +
-						finalNegativePrompt.slice(0, 200),
-					'color:#475569'
-				)
-			}
-		}
-
 		if (!node || node.type !== 'comfyui') return
 		if (!baseUrl) {
 			payload.pushToast(t('aiworkflow.toast.comfyAddressRequired'), 'warn')
@@ -904,17 +896,6 @@ export const useAIWorkflowComfyRuntime = (payload: {
 		if (!workflowPath) {
 			payload.pushToast(t('aiworkflow.toast.comfyWorkflowRequired'), 'warn')
 			return
-		}
-
-		// F8-A2：无成功运行历史不再硬阻断，改为 WARN 提示后继续执行
-		//   ComfyUI 本身不要求"先成功运行一次"才能提交任务。历史记录仅用于
-		//   自动匹配输入节点、输出锚点与回填参数，不是运行的前置条件。
-		if (settings.historyChecked && settings.hasHistory === false) {
-			const errMsg = settings.historyGuideMessage || t('nodes.comfyui.noHistoryRecord')
-			payload.pushToast(
-				errMsg + '，将以工作流默认值直接提交给 ComfyUI 执行（输入/输出锚点可能不完全匹配）',
-				'warn'
-			)
 		}
 
 		stopComfyUIPoll(nodeId)
@@ -934,160 +915,63 @@ export const useAIWorkflowComfyRuntime = (payload: {
 		try {
 			const resources = await collectComfyUIInputResources(nodeId)
 
-			const validationErrors: string[] = []
-			const expectedImages =
-				typeof settings.imageInputCount === 'number' ? settings.imageInputCount : null
-			const expectedVideos =
-				typeof settings.videoInputCount === 'number' ? settings.videoInputCount : null
-			const needsPrompt = settings.hasTextPromptInput === true
-
+			const mappings = settings.historyInputMappings
+			const activeEdges = new Set(
+				[...resources.images, ...resources.videos].map((file) => fileEdges.get(file))
+			)
+			const bindings = Object.fromEntries(
+				Object.entries(settings.inputBindings || {}).filter(([edge]) => activeEdges.has(edge))
+			)
+			const allFiles: ComfyInputFile[] = []
+			for (const [kind, files, targets] of [
+				['image', resources.images, mappings?.imageInputs || []],
+				['video', resources.videos, mappings?.videoInputs || []]
+			] as const) {
+				const assigned = new Set<string>()
+				for (const file of files) {
+					const edge = fileEdges.get(file) || ''
+					const keys = targets.map((t) => t.nodeId + ':' + t.inputKey)
+					let key = bindings[edge]
+					if (key && !keys.includes(key))
+						throw new Error('输入绑定已失效，请刷新模板并重新选择输入字段')
+					if (!key)
+						key = keys.find((k) => !assigned.has(k) && !Object.values(bindings).includes(k)) || ''
+					if (!key || assigned.has(key))
+						throw new Error('输入资源数量超过模板可绑定字段，或同一字段重复绑定')
+					bindings[edge] = key
+					assigned.add(key)
+					allFiles.push({ file, mediaType: kind, bindingId: key })
+				}
+			}
+			const latest = payload.store.state.nodesById[nodeId] as ComfyNode | undefined
 			if (
-				expectedImages !== null &&
-				expectedImages > 0 &&
-				resources.images.length < expectedImages
-			) {
-				// F7: 增强错误信息，帮助用户定位问题
-				const d = lastCollectDiag
-				let reason = ''
-				if (d && d.matchedEdges === 0) {
-					reason = '（未检测到上游节点连线，请检查输入锚点是否已连接）'
-				} else if (d && d.skippedMissingResourceId > 0) {
-					reason = `（${d.skippedMissingResourceId} 个上游节点未关联资源文件）`
-				} else if (d && d.skippedMissingResource > 0) {
-					reason = `（${d.skippedMissingResource} 个资源在资源池中找不到）`
-				} else if (d && d.skippedFileConversion > 0) {
-					reason = `（${d.skippedFileConversion} 个资源文件加载失败）`
-				}
-				validationErrors.push(
-					`工作流需要 ${expectedImages} 张图片输入，当前连接了 ${resources.images.length} 张${reason}`
-				)
-			}
-			if (
-				expectedVideos !== null &&
-				expectedVideos > 0 &&
-				resources.videos.length < expectedVideos
-			) {
-				validationErrors.push(
-					`工作流需要 ${expectedVideos} 个视频输入，当前连接了 ${resources.videos.length} 个`
-				)
-			}
-			if (needsPrompt && !finalPositivePrompt) {
-				validationErrors.push('工作流需要提示词输入，请连接文本节点或在设置中填写提示词')
-			}
-
-			if (settings.inputRequirements && validationErrors.length === 0) {
-				const inputReqs = settings.inputRequirements
-				const imgMin = Number(inputReqs.images?.min ?? 0)
-				const imgMax = Number(inputReqs.images?.max ?? 999)
-				if (resources.images.length < imgMin) {
-					validationErrors.push(
-						`工作流需要至少 ${imgMin} 张图片输入，当前连接了 ${resources.images.length} 张`
-					)
-				} else if (resources.images.length > imgMax) {
-					validationErrors.push(
-						`工作流最多接受 ${imgMax} 张图片输入，当前连接了 ${resources.images.length} 张`
-					)
-				}
-
-				const vidMin = Number(inputReqs.videos?.min ?? 0)
-				const vidMax = Number(inputReqs.videos?.max ?? 999)
-				if (resources.videos.length < vidMin) {
-					validationErrors.push(
-						`工作流需要至少 ${vidMin} 个视频输入，当前连接了 ${resources.videos.length} 个`
-					)
-				} else if (resources.videos.length > vidMax) {
-					validationErrors.push(
-						`工作流最多接受 ${vidMax} 个视频输入，当前连接了 ${resources.videos.length} 个`
-					)
-				}
-
-				if (inputReqs.positivePrompt?.required && !finalPositivePrompt) {
-					validationErrors.push('工作流需要正向提示词输入，请连接文本节点或在设置中填写提示词')
-				}
-			}
-
-			// F8-A2：无 historyInputMappings 不再阻断运行，降级为 WARN 提示
-			//   允许用户直接运行（inputMappings 传 undefined 给后端，
-			//   后端 comfyService.run 会走默认填充逻辑或直接把文件上传到 ComfyUI
-			//   再由工作流解析）。仅当 historyInputMappings 缺失且有输入资源时提示。
-			if (validationErrors.length === 0 && !settings.historyInputMappings) {
-				const hasInputs =
-					resources.images.length > 0 ||
-					resources.videos.length > 0 ||
-					finalPositivePrompt.length > 0
-				if (hasInputs) {
-					payload.pushToast(
-						'未解析到工作流输入定义，已将资源/提示词按顺序提交，ComfyUI 可能无法正确注入参数。建议先在 ComfyUI 中成功运行一次工作流以建立历史记录。',
-						'warn'
-					)
-				}
-			}
-
-			if (validationErrors.length > 0) {
-				payload.store.commit('setNodeComfyUISettings', {
-					nodeId,
-					comfyuiSettings: {
-						runStatus: 'failed',
-						progress: 0,
-						statusText: '输入参数校验失败',
-						lastUpdateAt: Date.now()
-					}
-				})
-				payload.pushToast(
-					`输入参数不满足要求：\n${validationErrors.slice(0, 3).join('\n')}`,
-					'error'
-				)
+				generation !== gen ||
+				latest?.comfyuiSettings?.baseUrl !== baseUrl ||
+				latest?.comfyuiSettings?.workflowPath !== workflowPath
+			)
 				return
-			}
+			payload.store.commit('setNodeComfyUISettings', {
+				nodeId,
+				comfyuiSettings: { inputBindings: bindings }
+			})
 
-			const allFiles: ComfyInputFile[] = [
-				...resources.images.map((f) => ({ file: f, mediaType: 'image' as const })),
-				...resources.videos.map((f) => ({ file: f, mediaType: 'video' as const }))
-			]
 			const runParams = {
-				positivePrompt: finalPositivePrompt,
-				negativePrompt: finalNegativePrompt,
+				positivePrompt: finalPositivePrompt || (settings.positivePromptEdited ? '' : undefined),
+				negativePrompt: finalNegativePrompt || (settings.negativePromptEdited ? '' : undefined),
+				snapshotId: settings.templateResolution?.snapshotId,
+				contentHash: settings.templateResolution?.contentHash,
+				workflowHash: settings.templateResolution?.workflowHash,
 				historyPromptId: settings.historyPromptId,
 				inputMappings: settings.historyInputMappings
 			}
-			if (typeof console !== 'undefined') {
-				console.log(
-					`%c[ComfyUI][RUN] 📤 comfyService.run 即将发起调用: baseUrl=${baseUrl} ` +
-						`| workflowPath=${workflowPath} | images=${resources.images.length} videos=${resources.videos.length} ` +
-						`| positivePrompt.len=${runParams.positivePrompt.length} | negativePrompt.len=${runParams.negativePrompt.length}`,
-					'color:#0ea5e9;font-weight:bold'
-				)
-				if (runParams.positivePrompt) {
-					console.log(
-						'[ComfyUI][RUN] 📤 positivePrompt 完整前400字:\n' +
-							runParams.positivePrompt.slice(0, 400)
-					)
-				}
-				console.log(
-					'[ComfyUI][RUN] 📤 runParams JSON:',
-					JSON.stringify(
-						{
-							...runParams,
-							inputMappings: runParams.inputMappings
-								? {
-										imageInputs: (runParams.inputMappings as any).imageInputs?.length ?? 0,
-										videoInputs: (runParams.inputMappings as any).videoInputs?.length ?? 0,
-										textNodes_positive:
-											((runParams.inputMappings as any).textNodes?.positive as unknown[])?.length ??
-											0,
-										textNodes_negative:
-											((runParams.inputMappings as any).textNodes?.negative as unknown[])?.length ??
-											0,
-										seedNodes: (runParams.inputMappings as any).seedNodes?.length ?? 0
-									}
-								: undefined
-						},
-						null,
-						2
-					)
-				)
-			}
 			const rr = await payload.comfyService.run(baseUrl, workflowPath, allFiles, runParams)
+			const active = payload.store.state.nodesById[nodeId] as ComfyNode | undefined
+			if (
+				generation !== gen ||
+				active?.comfyuiSettings?.baseUrl !== baseUrl ||
+				active?.comfyuiSettings?.workflowPath !== workflowPath
+			)
+				return
 			if (!rr.ok) {
 				if (rr.requiresHistorySetup) {
 					payload.store.commit('setNodeComfyUISettings', {
@@ -1119,11 +1003,11 @@ export const useAIWorkflowComfyRuntime = (payload: {
 					comfyuiSettings: {
 						runStatus: 'failed',
 						progress: 100,
-						statusText: t('nodes.comfyui.submitFailed'),
+						statusText: rr.message || t('nodes.comfyui.submitFailed'),
 						lastUpdateAt: Date.now()
 					}
 				})
-				let errorMsg = String(rr.error || 'unknown')
+				let errorMsg = String(rr.message || rr.error || 'unknown')
 				if (rr.comfyuiError && typeof rr.comfyuiError === 'object') {
 					const nodeErrors = (rr.comfyuiError as any).node_errors
 					if (nodeErrors && typeof nodeErrors === 'object') {
@@ -1407,10 +1291,27 @@ export const useAIWorkflowComfyRuntime = (payload: {
 	}
 
 	const disposeComfyRuntime = () => {
+		generation++
+		pollTokens.clear()
 		for (const timer of comfyPollTimers.values()) window.clearInterval(timer)
 		comfyPollTimers.clear()
 		comfyPollErrorCounts.clear()
 		comfyTerminalNotified.clear()
+	}
+
+	const onComfyUIRun = async (nodeId: string) => {
+		const node = payload.store.state.nodesById[nodeId] as ComfyNode | undefined
+		if (
+			submissions.has(nodeId) ||
+			['running', 'canceling'].includes(String(node?.comfyuiSettings?.runStatus))
+		)
+			return
+		submissions.add(nodeId)
+		try {
+			await performComfyUIRun(nodeId)
+		} finally {
+			submissions.delete(nodeId)
+		}
 	}
 
 	return {

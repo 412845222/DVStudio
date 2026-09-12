@@ -1945,7 +1945,15 @@ watchEffect(() => {
 	const editor = blueprintHostRef.value?.getInstance?.()
 	if (!editor) return
 	setEngineSyncHooks({
-		syncComfyUISettings: (nodeId: string) => patchBlueprintNodeData(nodeId),
+		syncComfyUISettings: (nodeId: string) => {
+			const n = store.state.nodesById[nodeId]
+			if (n)
+				engineApi.updateNodeData?.(nodeId, {
+					comfyuiSettings: n.comfyuiSettings,
+					inputs: n.inputs,
+					outputs: n.outputs
+				})
+		},
 		syncNodeResource: (nodeId: string) => patchBlueprintNodeData(nodeId),
 		// FX2: 边同步 — 将 Vuex 中的边操作同步到 BlueprintEngine
 		syncAddEdge: (edge) => {
@@ -10084,6 +10092,7 @@ async function onConfirmApplyTemplate(options: TemplateApplyOptions) {
 			})
 			setUnsavedProject('')
 			disposeComfyRuntime()
+			disposeComfyConnection()
 			comfyAnchorAssignments.clear()
 			comfyAnchorLocalizedOutputs.clear()
 
@@ -10305,9 +10314,12 @@ const {
 	onComfyUIConnect,
 	onComfyUISelectWorkflow,
 	onRefreshHistoryCheck,
+	ensureComfyTemplate,
+	disposeComfyConnection,
 	onClearHistoryCache,
 	reloadLocalWorkflows: reloadComfyLocalWorkflows
 } = useAIWorkflowComfyConnection({
+	getSessionKey: () => currentProjectId.value,
 	store,
 	comfyService,
 	pushToast: (message, tone) => pushToastBridge(message, tone),
@@ -10486,6 +10498,7 @@ const { autoWireComfyOutputs, isComfyAutoWireEnabled } = useAIWorkflowComfyAutoW
 
 const { onComfyUIRun, onComfyUICancel, recoverComfyUIRunStates, disposeComfyRuntime } =
 	useAIWorkflowComfyRuntime({
+		ensureComfyTemplate,
 		store,
 		comfyService,
 		pushToast: (message, tone) => pushToastBridge(message, tone),
@@ -12456,7 +12469,10 @@ const {
 	createEmptyDraftSnapshot: () => buildSnapshotFromState(createDefaultAIWorkflowState()),
 	store,
 	setUnsavedProject,
-	resetComfyRuntime: disposeComfyRuntime,
+	resetComfyRuntime: () => {
+		disposeComfyRuntime()
+		disposeComfyConnection()
+	},
 	comfyAnchorAssignments,
 	comfyAnchorLocalizedOutputs,
 	loadProjectById,
@@ -15108,6 +15124,7 @@ onBeforeUnmount(() => {
 	window.removeEventListener('pointerup', flushPendingImageDistribute, true)
 	window.removeEventListener('pointercancel', flushPendingImageDistribute, true)
 	disposeComfyRuntime()
+	disposeComfyConnection()
 	cleanupSceneUnderstandingRuntime()
 	clearMeshyRuntime()
 	stopUnrealExportPolling()
