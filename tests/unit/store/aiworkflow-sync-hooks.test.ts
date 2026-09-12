@@ -290,3 +290,84 @@ describe('Store Engine Sync Hooks + HydrateDraft Edge Preservation (FX1 FX3 FX7)
 		})
 	})
 })
+
+describe('ComfyUI runtime template settings persistence', () => {
+	const resetStore = () => {
+		setEngineSyncHooks({
+			syncComfyUISettings: undefined as any,
+			syncNodeResource: undefined as any,
+			syncAddEdge: undefined as any,
+			syncRemoveEdge: undefined as any
+		})
+		const cleanState = createDefaultAIWorkflowState()
+		const st = AIWorkflowStore.state as any
+		for (const k of Object.keys(cleanState) as (keyof ReturnType<
+			typeof createDefaultAIWorkflowState
+		>)[]) {
+			st[k] = (cleanState as any)[k]
+		}
+	}
+	const comfyNode = (id: string, comfyuiSettings: Record<string, unknown>) => ({
+		id,
+		type: 'comfyui',
+		title: 'ComfyUI Node',
+		worldX: 0,
+		worldY: 0,
+		width: 280,
+		height: 220,
+		inputs: [],
+		outputs: [],
+		comfyuiSettings,
+		createdAt: 1
+	})
+	const hydrate = (nodesById: Record<string, any>) =>
+		AIWorkflowStore.commit('hydrateDraft', {
+			snapshot: {
+				nodesById,
+				nodeOrder: Object.keys(nodesById),
+				edgesById: {},
+				edgeOrder: [],
+				viewport: { zoom: 1, panX: 0, panY: 0 },
+				resourcesById: {},
+				resourceOrder: []
+			}
+		})
+
+	it('hydrateDraft keeps valid resolution/bindings and drops malformed persisted fields', () => {
+		resetStore()
+		hydrate({
+			c: comfyNode('c', {
+				baseUrl: 'http://comfy',
+				templateResolution: {
+					contentHash: 'h1',
+					workflowHash: 'w1',
+					snapshotId: 'p1',
+					source: 'history-live',
+					schemaVersion: 1
+				},
+				inputBindings: { ea: '10:image', bad: 42 },
+				positivePromptEdited: true,
+				negativePromptEdited: 'yes'
+			}),
+			c2: comfyNode('c2', {
+				baseUrl: 'http://comfy',
+				templateResolution: { source: 'history-live' }
+			})
+		})
+		const settings = (AIWorkflowStore.state.nodesById as any).c.comfyuiSettings
+		expect(settings.templateResolution).toEqual({
+			contentHash: 'h1',
+			workflowHash: 'w1',
+			snapshotId: 'p1',
+			source: 'history-live',
+			schemaVersion: 1
+		})
+		expect(settings.inputBindings).toEqual({ ea: '10:image' })
+		expect(settings.positivePromptEdited).toBe(true)
+		// Non-boolean persisted values are coerced to false (never left as raw strings)
+		expect(settings.negativePromptEdited).toBe(false)
+		expect(
+			(AIWorkflowStore.state.nodesById as any).c2.comfyuiSettings.templateResolution
+		).toBeUndefined()
+	})
+})
