@@ -360,6 +360,26 @@
 					</svg>
 					{{ t('nodes.imageMarkup.exportScreenshot') }}
 				</button>
+				<div class="toolbar-divider"></div>
+				<button
+					class="toolbar-btn btn-close"
+					@click="closeWindow"
+					:title="t('nodes.imageMarkup.close')"
+				>
+					<svg
+						width="16"
+						height="16"
+						viewBox="0 0 24 24"
+						fill="none"
+						stroke="currentColor"
+						stroke-width="2"
+						stroke-linecap="round"
+						stroke-linejoin="round"
+					>
+						<path d="M18 6 6 18" />
+						<path d="m6 6 12 12" />
+					</svg>
+				</button>
 			</div>
 		</div>
 
@@ -753,6 +773,9 @@ function exportScreenshot() {
 		return
 	}
 
+	// 裁剪导出后保持窗口打开：composeScreenshotDataUrl 不会清除 screenshotRect，
+	// 窗口保持打开即可保留裁剪框，允许用户复用裁剪区域多次导出。
+	// 主进程 dweb:image-markup:export 对 screenshot 类型已设置 keepWindowOpen=true。
 	dweb.aiworkflow
 		.exportImageMarkup({
 			imageDataUrl: result.dataUrl,
@@ -761,9 +784,13 @@ function exportScreenshot() {
 			height: result.height,
 			exportType: 'screenshot'
 		})
-		.then(() => {
-			window.close()
+		.catch((err) => {
+			console.error('[ImageMarkupPreview] exportScreenshot failed', err)
 		})
+}
+
+function closeWindow() {
+	window.close()
 }
 
 function downloadDataUrl(dataUrl: string, filename: string) {
@@ -1102,6 +1129,11 @@ onBeforeUnmount(() => {
 }
 
 .toolbar-btn.btn-danger:hover:not(:disabled) {
+	background: rgba(239, 68, 68, 0.2);
+	color: #ef4444;
+}
+
+.toolbar-btn.btn-close:hover:not(:disabled) {
 	background: rgba(239, 68, 68, 0.2);
 	color: #ef4444;
 }
