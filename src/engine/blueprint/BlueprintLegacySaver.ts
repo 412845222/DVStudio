@@ -75,7 +75,20 @@ export class BlueprintLegacySaver {
 			selectedNodeId,
 			selectedNodeIds: selectedNodeIds.length > 0 ? selectedNodeIds : [],
 			selectionTagsByKey,
-			savedSelectionFrames: data.savedSelectionFrames?.map((f) => ({ ...f })),
+			savedSelectionFrames: data.savedSelectionFrames?.map((f) => ({
+				id: f.id,
+				nodeIds: [...f.nodeIds],
+				label: f.label,
+				createdAt: f.createdAt,
+				automation: f.automation
+					? {
+							enabled: f.automation.enabled,
+							loopCount: f.automation.loopCount,
+							inputBindings: f.automation.inputBindings.map((b) => ({ ...b })),
+							outputBindings: f.automation.outputBindings.map((b) => ({ ...b }))
+						}
+					: undefined
+			})),
 			nodeCheckboxVisible: false
 		}
 	}

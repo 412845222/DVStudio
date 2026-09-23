@@ -123,6 +123,7 @@ const emit = defineEmits<{
 	'node-update-blender-settings': [payload: { nodeId: string; patch: Record<string, any> }]
 	'node-blender-compress-context': [payload: { nodeId: string }]
 	'node-open-director-console': [payload: { nodeId: string }]
+	'frame-automation-run': [payload: { frameId: string }]
 }>()
 
 const blueprintEditorRef = ref<InstanceType<typeof BlueprintEditor> | null>(null)
@@ -302,6 +303,21 @@ defineExpose({
 	// 用于业务层在处理 Backspace/Delete 快捷键前判断是否应跳过删除节点。
 	isSelectionFrameEditing(): boolean {
 		return !!blueprintEditorRef.value?.isSelectionFrameEditing?.()
+	},
+	configureFrameAutomation(frameId: string, patch: Record<string, any>): boolean {
+		return blueprintEditorRef.value?.configureFrameAutomation?.(frameId, patch) ?? false
+	},
+	getFrameAutomation(frameId: string) {
+		return blueprintEditorRef.value?.getFrameAutomation?.(frameId) ?? undefined
+	},
+	setFrameAutomationRunState(frameId: string, state: Record<string, any> | null) {
+		blueprintEditorRef.value?.setFrameAutomationRunState?.(frameId, state)
+	},
+	getFrameAutomationRunState(frameId: string) {
+		return blueprintEditorRef.value?.getFrameAutomationRunState?.(frameId) ?? null
+	},
+	isFrameAutomationInteracting(): boolean {
+		return !!blueprintEditorRef.value?.isFrameAutomationInteracting?.()
 	}
 })
 
@@ -511,6 +527,7 @@ watch(
 			@node-update-blender-settings="(p: any) => emit('node-update-blender-settings', p)"
 			@node-blender-compress-context="(p: any) => emit('node-blender-compress-context', p)"
 			@node-open-director-console="(p: any) => emit('node-open-director-console', p)"
+			@frame-automation-run="(p: any) => emit('frame-automation-run', p)"
 		/>
 		<div class="bp-overlay-layer">
 			<slot />

@@ -1801,6 +1801,25 @@ export type WorkflowSelectionTag = {
 }
 
 /**
+ * 多选组合自动化流程配置（与引擎 frame-automation 子域同构）。
+ * 门户绑定记录组内真实节点/锚点；连线实体仍指向真实锚点，门户仅为交互/渲染门面。
+ */
+export type FrameIoBinding = {
+	id: string
+	nodeId: string
+	anchorId: string
+	label?: string
+	mediaType?: string
+}
+
+export type FrameAutomationData = {
+	enabled: boolean
+	loopCount: number
+	inputBindings: FrameIoBinding[]
+	outputBindings: FrameIoBinding[]
+}
+
+/**
  * 已保存的选区框（持久化实体，不依赖运行时 selectedNodeIds）
  */
 export type SavedSelectionFrame = {
@@ -1812,4 +1831,6 @@ export type SavedSelectionFrame = {
 	nodeIds: string[]
 	/** 创建时间 */
 	createdAt: number
+	/** 自动化流程配置（可选；缺省为普通分组） */
+	automation?: FrameAutomationData
 }
