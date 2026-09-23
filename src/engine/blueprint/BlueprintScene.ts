@@ -32,9 +32,28 @@ import {
 	DeleteSelectionFrameCommand,
 	RenameSelectionFrameCommand
 } from './commands/SelectionFrameCommands'
+import { ConfigureFrameAutomationCommand } from './commands/ConfigureFrameAutomationCommand'
 import { MoveNodeCommand } from '../graphbase/commands/CompositeCommand'
 import { ThemeManager, getThemeManager } from './theme'
 import { I18nManager, getI18nManager } from './i18n'
+import {
+	createDefaultFrameAutomation,
+	clampLoopCount,
+	type FrameAutomationData,
+	type FrameAutomationRunState,
+	type PortalDirection
+} from './frame-automation/FrameAutomationTypes'
+import {
+	sanitizeFrameAutomation,
+	pruneBindingsForNode
+} from './frame-automation/frameAutomationPorts'
+import {
+	computeAutomationOuterRect,
+	getFrameBodyWorldRect,
+	layoutPortalAnchors,
+	type PortalLayoutInput
+} from './frame-automation/frameAutomationGeometry'
+import { computeSelectionBounds } from './SelectionFrame'
 
 interface PendingConnection {
 	fromNode: BlueprintNode
@@ -68,6 +87,8 @@ export class BlueprintScene extends Scene {
 	private _tempConnection: TempConnection
 	private _pendingConnection: PendingConnection | null = null
 	private _savedSelectionFrames: Map<string, SavedSelectionFrame> = new Map()
+	/** 自动化运行临时态：不持久化、不进命令栈 */
+	private _frameAutomationRunStates: Map<string, FrameAutomationRunState> = new Map()
 	private _legacyResources: Record<string, LegacyResourceData> = {}
 	private _lastLoadSignature = ''
 	private _clipboardNodes: BlueprintNodeData[] = []
@@ -387,12 +408,20 @@ export class BlueprintScene extends Scene {
 		}
 
 		this._savedSelectionFrames.clear()
+		this._frameAutomationRunStates.clear()
 		if (blueprintData.savedSelectionFrames) {
 			for (const frameData of blueprintData.savedSelectionFrames) {
+				// 此时节点已全部装载，对 automation 做一次权威清洗（丢弃失效成员/锚点绑定）
+				const automation = sanitizeFrameAutomation(
+					frameData.automation,
+					frameData.nodeIds,
+					(id) => this._nodeMap.get(id) ?? null
+				)
 				this._savedSelectionFrames.set(frameData.id, {
 					id: frameData.id,
 					nodeIds: [...frameData.nodeIds],
-					label: frameData.label
+					label: frameData.label,
+					automation
 				})
 			}
 		}
@@ -553,7 +582,17 @@ export class BlueprintScene extends Scene {
 				discarded.frames++
 				continue
 			}
-			savedSelectionFrames.push({ id: raw.id, nodeIds, label: raw.label })
+			// automation 原始配置先保留，权威清洗在 loadBlueprint 节点装载完成后进行
+			// （清洗需要节点/端口存在以校验绑定）
+			savedSelectionFrames.push({
+				id: raw.id,
+				nodeIds,
+				label: raw.label,
+				automation:
+					raw.automation && typeof raw.automation === 'object'
+						? (raw.automation as FrameAutomationData)
+						: undefined
+			})
 		}
 
 		const totalDiscarded = discarded.nodes + discarded.edges + discarded.frames
@@ -802,6 +841,43 @@ export class BlueprintScene extends Scene {
 		return !!tool?.isEditingFrameLabel
 	}
 
+	/** 自动化绑定模式/循环次数输入中（Host 删除/粘贴快捷键守卫用） */
+	isFrameAutomationInteracting(): boolean {
+		const tool = this.tools.getTool<BlueprintEditorTool>('blueprint_editor')
+		return !!tool?.isFrameAutomationInteracting
+	}
+
+	/** 以下为循环次数透明 DOM <input> 的 Tool 状态委托（与标签编辑链路同构） */
+	isAutomationLoopEditing(): boolean {
+		const tool = this.tools.getTool<BlueprintEditorTool>('blueprint_editor')
+		return !!tool?.isEditingAutomationLoop
+	}
+
+	getAutomationLoopText(): string {
+		const tool = this.tools.getTool<BlueprintEditorTool>('blueprint_editor')
+		return tool?.getAutomationLoopText() ?? ''
+	}
+
+	setAutomationLoopEditText(v: string): void {
+		const tool = this.tools.getTool<BlueprintEditorTool>('blueprint_editor')
+		tool?.setLoopEditTextDirectly(v)
+	}
+
+	commitAutomationLoopEdit(): void {
+		const tool = this.tools.getTool<BlueprintEditorTool>('blueprint_editor')
+		tool?.commitAutomationLoopEdit()
+	}
+
+	cancelAutomationLoopEdit(): void {
+		const tool = this.tools.getTool<BlueprintEditorTool>('blueprint_editor')
+		tool?.cancelAutomationLoopEdit()
+	}
+
+	getAutomationLoopEditWorldRect(): EditingFrameLabelWorldRectResult | null {
+		const tool = this.tools.getTool<BlueprintEditorTool>('blueprint_editor')
+		return tool?.getAutomationLoopEditWorldRect() ?? null
+	}
+
 	/**
 	 * 供 Vue 层透明 DOM <input> 查询当前正在编辑的标签文字（用于进入编辑态时同步 value）。
 	 * 未编辑时返回 ''（不抛错）。
@@ -858,13 +934,188 @@ export class BlueprintScene extends Scene {
 	addSelectionFrameInternal(
 		nodeIds: string[],
 		label: string,
-		existingId?: string
+		existingId?: string,
+		automation?: FrameAutomationData
 	): SavedSelectionFrame {
 		const id = existingId ?? `frame_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
 		const sortedIds = [...nodeIds].sort()
-		const frame: SavedSelectionFrame = { id, nodeIds: sortedIds, label }
+		const frame: SavedSelectionFrame = { id, nodeIds: sortedIds, label, automation }
 		this._savedSelectionFrames.set(id, frame)
 		return frame
+	}
+
+	/** 命令内部使用：直接替换框的自动化配置（不经命令栈） */
+	setFrameAutomationInternal(frameId: string, config: FrameAutomationData | undefined): void {
+		const frame = this._savedSelectionFrames.get(frameId)
+		if (!frame) return
+		frame.automation = config
+	}
+
+	/** 读取框的自动化配置（未配置返回 undefined） */
+	getFrameAutomation(frameId: string): FrameAutomationData | undefined {
+		return this._savedSelectionFrames.get(frameId)?.automation
+	}
+
+	/**
+	 * 修改自动化配置（走 Command，可 undo/redo，自动触发 after-command → emitChange 持久化链路）。
+	 * patch 为局部覆盖；首次开启且无配置时写入默认配置。
+	 */
+	configureFrameAutomation(
+		frameId: string,
+		patch: Partial<Omit<FrameAutomationData, 'inputBindings' | 'outputBindings'>> & {
+			inputBindings?: FrameAutomationData['inputBindings']
+			outputBindings?: FrameAutomationData['outputBindings']
+		}
+	): boolean {
+		const frame = this._savedSelectionFrames.get(frameId)
+		if (!frame) return false
+		const prev = frame.automation
+		const base: FrameAutomationData = prev
+			? {
+					enabled: prev.enabled,
+					loopCount: prev.loopCount,
+					inputBindings: prev.inputBindings.map((b) => ({ ...b })),
+					outputBindings: prev.outputBindings.map((b) => ({ ...b }))
+				}
+			: createDefaultFrameAutomation()
+
+		if (patch.enabled !== undefined) base.enabled = !!patch.enabled
+		if (patch.loopCount !== undefined) base.loopCount = clampLoopCount(patch.loopCount)
+		if (patch.inputBindings) base.inputBindings = patch.inputBindings.map((b) => ({ ...b }))
+		if (patch.outputBindings) base.outputBindings = patch.outputBindings.map((b) => ({ ...b }))
+
+		// 绑定校验：成员必须在框内、锚点必须存在、mediaType 以真实端口为准
+		const memberSet = new Set(frame.nodeIds)
+		const validate = (list: FrameAutomationData['inputBindings'], dir: PortalDirection) =>
+			list
+				.filter((b) => memberSet.has(b.nodeId))
+				.map((b) => {
+					const node = this._nodeMap.get(b.nodeId)
+					const port = node
+						? dir === 'in'
+							? node.getInputPort(b.anchorId)
+							: node.getOutputPort(b.anchorId)
+						: null
+					return port ? { ...b, mediaType: port.mediaType } : null
+				})
+				.filter((b): b is NonNullable<typeof b> => !!b)
+		base.inputBindings = validate(base.inputBindings, 'in')
+		base.outputBindings = validate(base.outputBindings, 'out')
+
+		this.executeCommand(new ConfigureFrameAutomationCommand(this, frameId, base, prev))
+		return true
+	}
+
+	/** 运行临时态回写（不进命令栈、不序列化，仅 requestRedraw） */
+	setFrameAutomationRunState(frameId: string, state: FrameAutomationRunState | null): void {
+		if (state) this._frameAutomationRunStates.set(frameId, state)
+		else this._frameAutomationRunStates.delete(frameId)
+		this.requestRedraw()
+	}
+
+	getFrameAutomationRunState(frameId: string): FrameAutomationRunState | null {
+		return this._frameAutomationRunStates.get(frameId) ?? null
+	}
+
+	/** 请求 Host 层执行单元自动化（Tool 点击运行按钮时调用，经 BlueprintEditor.vue 转发） */
+	requestFrameAutomationRun(frameId: string): void {
+		if (!this._savedSelectionFrames.has(frameId)) return
+		const config = this._savedSelectionFrames.get(frameId)?.automation
+		if (!config?.enabled) return
+		this.on.emit('frame-automation-run', { frameId })
+	}
+
+	/**
+	 * 门户锚点 → 组内真实节点/端口解析（连线代理与端点渲染用）。
+	 */
+	resolveFramePortal(
+		frameId: string,
+		direction: PortalDirection,
+		bindingId: string
+	): { node: BlueprintNode; port: Port } | null {
+		const frame = this._savedSelectionFrames.get(frameId)
+		if (!frame?.automation?.enabled) return null
+		const binding =
+			direction === 'in'
+				? frame.automation.inputBindings.find((b) => b.id === bindingId)
+				: frame.automation.outputBindings.find((b) => b.id === bindingId)
+		if (!binding) return null
+		const node = this._nodeMap.get(binding.nodeId)
+		if (!node) return null
+		const port =
+			direction === 'in'
+				? node.getInputPort(binding.anchorId)
+				: node.getOutputPort(binding.anchorId)
+		return port ? { node, port } : null
+	}
+
+	/**
+	 * 反查某内部锚点是否被某 enabled 框绑定为门户（渲染期端点吸附用）。
+	 * 返回门户锚点的世界坐标由调用方结合 layoutPortalAnchors 计算。
+	 */
+	findFrameBindingForAnchor(
+		nodeId: string,
+		anchorId: string
+	): { frameId: string; direction: PortalDirection; bindingId: string } | null {
+		for (const frame of this._savedSelectionFrames.values()) {
+			if (!frame.automation?.enabled) continue
+			const inHit = frame.automation.inputBindings.find(
+				(b) => b.nodeId === nodeId && b.anchorId === anchorId
+			)
+			if (inHit) return { frameId: frame.id, direction: 'in', bindingId: inHit.id }
+			const outHit = frame.automation.outputBindings.find(
+				(b) => b.nodeId === nodeId && b.anchorId === anchorId
+			)
+			if (outHit) return { frameId: frame.id, direction: 'out', bindingId: outHit.id }
+		}
+		return null
+	}
+
+	/**
+	 * 若某内部锚点被 enabled 框绑定为门户，返回门户在框边线上的世界坐标（渲染期端点吸附用）。
+	 * 纯派生计算，不改变任何状态。
+	 */
+	getPortalWorldPositionForAnchor(nodeId: string, anchorId: string): Vector2 | null {
+		const hit = this.findFrameBindingForAnchor(nodeId, anchorId)
+		if (!hit) return null
+		const frame = this.getSavedSelectionFrame(hit.frameId)
+		if (!frame?.automation?.enabled) return null
+		const nodes = this.getNodesByIds(frame.nodeIds)
+		const base = computeSelectionBounds(nodes)
+		if (!base) return null
+		const outer = computeAutomationOuterRect(base, true)
+		const bodyRect = getFrameBodyWorldRect(outer, true, this.camera.zoom)
+		const bindings =
+			hit.direction === 'in' ? frame.automation.inputBindings : frame.automation.outputBindings
+		const items: PortalLayoutInput[] = bindings.map((b) => {
+			const node = this._nodeMap.get(b.nodeId)
+			const port = node
+				? hit.direction === 'in'
+					? node.getInputPort(b.anchorId)
+					: node.getOutputPort(b.anchorId)
+				: null
+			return { binding: b, worldY: port ? port.getWorldPosition().y : null }
+		})
+		const portals = layoutPortalAnchors(items, bodyRect, hit.direction, this.camera.zoom)
+		const target = portals.find((p) => p.bindingId === hit.bindingId)
+		return target ? new Vector2(target.x, target.y) : null
+	}
+
+	/** 删除成员节点时剔除失效绑定（DeleteSelectionCommand 对称快照/恢复，loadBlueprint 重建也安全） */
+	pruneFrameAutomationForNode(removedNodeId: string): void {
+		for (const frame of this._savedSelectionFrames.values()) {
+			if (!frame.automation?.enabled) continue
+			const next = pruneBindingsForNode(frame.automation, removedNodeId)
+			if (next !== frame.automation) frame.automation = next
+		}
+	}
+
+	/** 恢复整份框自动化配置（DeleteSelectionCommand.undo 用） */
+	restoreFrameAutomationSnapshot(snapshots: Map<string, FrameAutomationData | undefined>): void {
+		for (const [frameId, config] of snapshots) {
+			const frame = this._savedSelectionFrames.get(frameId)
+			if (frame) frame.automation = config
+		}
 	}
 
 	removeSelectionFrameInternal(frameId: string): boolean {
@@ -1206,9 +1457,33 @@ export class BlueprintScene extends Scene {
 			const fromPort = fromNode.getOutputPort(conn.data.fromAnchorId)
 			const toPort = toNode.getInputPort(conn.data.toAnchorId)
 			if (fromPort && toPort) {
+				// 端点门户吸附：仅当连线跨越框边界（对端节点不在同一绿框内）时才吸到框边线门户
+				let fromWorld = fromPort.getWorldPosition()
+				let toWorld = toPort.getWorldPosition()
+				const fromBinding = this.findFrameBindingForAnchor(
+					conn.data.fromNodeId,
+					conn.data.fromAnchorId
+				)
+				if (
+					fromBinding &&
+					!this.getSavedSelectionFrame(fromBinding.frameId)?.nodeIds.includes(conn.data.toNodeId)
+				) {
+					fromWorld =
+						this.getPortalWorldPositionForAnchor(conn.data.fromNodeId, conn.data.fromAnchorId) ??
+						fromWorld
+				}
+				const toBinding = this.findFrameBindingForAnchor(conn.data.toNodeId, conn.data.toAnchorId)
+				if (
+					toBinding &&
+					!this.getSavedSelectionFrame(toBinding.frameId)?.nodeIds.includes(conn.data.fromNodeId)
+				) {
+					toWorld =
+						this.getPortalWorldPositionForAnchor(conn.data.toNodeId, conn.data.toAnchorId) ??
+						toWorld
+				}
 				conn.setEndpoints({
-					fromWorld: fromPort.getWorldPosition(),
-					toWorld: toPort.getWorldPosition(),
+					fromWorld,
+					toWorld,
 					mediaType: fromPort.mediaType
 				})
 			}
@@ -1240,7 +1515,15 @@ export class BlueprintScene extends Scene {
 			savedSelectionFrames.push({
 				id: frame.id,
 				nodeIds: [...frame.nodeIds],
-				label: frame.label
+				label: frame.label,
+				automation: frame.automation
+					? {
+							enabled: frame.automation.enabled,
+							loopCount: frame.automation.loopCount,
+							inputBindings: frame.automation.inputBindings.map((b) => ({ ...b })),
+							outputBindings: frame.automation.outputBindings.map((b) => ({ ...b }))
+						}
+					: undefined
 			})
 		}
 
@@ -1292,6 +1575,7 @@ export class BlueprintScene extends Scene {
 		this._nodeMap.clear()
 		this._connectionMap.clear()
 		this._savedSelectionFrames.clear()
+		this._frameAutomationRunStates.clear()
 		clearBlueprintNodeImageCache()
 		super.dispose()
 	}

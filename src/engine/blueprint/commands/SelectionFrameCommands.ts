@@ -1,6 +1,17 @@
 import { Command } from '../../graphbase/commands/Command'
 import type { BlueprintScene } from '../BlueprintScene'
 import type { SavedSelectionFrame } from '../SelectionFrame'
+import type { FrameAutomationData } from '../frame-automation/FrameAutomationTypes'
+
+function cloneAutomation(c: FrameAutomationData | undefined): FrameAutomationData | undefined {
+	if (!c) return undefined
+	return {
+		enabled: c.enabled,
+		loopCount: c.loopCount,
+		inputBindings: c.inputBindings.map((b) => ({ ...b })),
+		outputBindings: c.outputBindings.map((b) => ({ ...b }))
+	}
+}
 
 export class SaveSelectionFrameCommand extends Command {
 	private scene: BlueprintScene
@@ -17,7 +28,7 @@ export class SaveSelectionFrameCommand extends Command {
 	}
 
 	execute(): void {
-		this.scene.addSelectionFrameInternal(this.nodeIds, this.label, this.frameId)
+		this.scene.addSelectionFrameInternal(this.nodeIds, this.label, this.frameId, undefined)
 		this.scene.requestRedraw()
 	}
 
@@ -44,7 +55,8 @@ export class DeleteSelectionFrameCommand extends Command {
 			this.deletedFrame = {
 				id: this.deletedFrame.id,
 				nodeIds: [...this.deletedFrame.nodeIds],
-				label: this.deletedFrame.label
+				label: this.deletedFrame.label,
+				automation: cloneAutomation(this.deletedFrame.automation)
 			}
 			this.scene.removeSelectionFrameInternal(this.frameId)
 			this.scene.requestRedraw()
@@ -56,7 +68,8 @@ export class DeleteSelectionFrameCommand extends Command {
 			this.scene.addSelectionFrameInternal(
 				this.deletedFrame.nodeIds,
 				this.deletedFrame.label,
-				this.deletedFrame.id
+				this.deletedFrame.id,
+				cloneAutomation(this.deletedFrame.automation)
 			)
 			this.deletedFrame = null
 			this.scene.requestRedraw()

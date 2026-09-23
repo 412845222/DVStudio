@@ -27,9 +27,35 @@ import {
 	pointInTempFrameSaveBtn,
 	type EditingFrameLabelWorldRectResult,
 	type FrameEditState,
-	SELECTION_FRAME_CONSTANTS
+	SELECTION_FRAME_CONSTANTS,
+	type SavedSelectionFrame
 } from './SelectionFrame'
 import { MIN_NODE_WIDTH, MIN_NODE_HEIGHT, type ResizeCorner } from './types'
+import {
+	computeAutomationOuterRect,
+	getAutomationBarWorldRect,
+	getFrameBodyWorldRect,
+	layoutPortalAnchors,
+	toggleBinding,
+	clampLoopCount,
+	AUTOMATION_BAR_HEIGHT as AUTOMATION_BAR_VISUAL_HEIGHT,
+	type AutomationBarHit,
+	type PortalAnchorGeometry,
+	type PortalDirection,
+	type PortalLayoutInput
+} from './frame-automation'
+import {
+	drawAutomationToggle,
+	drawAutomationBar,
+	drawPortalAnchors,
+	drawBindingCandidates,
+	hitTestAutomationToggle,
+	hitTestAutomationBar,
+	hitTestPortalAnchor,
+	hitTestPortalRemove,
+	computeBarLayout,
+	type BindingMode
+} from './frame-automation/FrameAutomationToolbar'
 
 enum DragMode {
 	NONE,
@@ -78,6 +104,15 @@ export class BlueprintEditorTool extends Tool {
 	private editText: string = ''
 	/** IME 组合中：compositionstart=true，compositionend=false；为 true 期间 keydown 不处理字符输入/退格，避免打断输入法候选字 */
 	private isComposing: boolean = false
+
+	// —— 多选组合自动化 ——
+	/** 绑定模式：none / 正在设定输入锚点 / 正在设定输出锚点 */
+	private automationMode: BindingMode = 'none'
+	private activeAutomationFrameId: string | null = null
+	/** 正在编辑循环次数的绿框 ID（透明 DOM 数字输入语境） */
+	private editingLoopFrameId: string | null = null
+	private loopEditText: string = ''
+	private hoveredPortalKey: string | null = null
 	private lastClickTime: number = 0
 	private lastClickScreen: Vector2 = new Vector2()
 	private pendingClickNode: BlueprintNode | null = null
@@ -398,6 +433,314 @@ export class BlueprintEditorTool extends Tool {
 		return pointInTempFrameSaveBtn(screenPoint, this.tempSelectionBounds, count, camera)
 	}
 
+	// ================= 多选组合自动化（frame-automation） =================
+
+	/** 绑定模式 / 循环次数输入中（Host 删除快捷键守卫用） */
+	get isFrameAutomationInteracting(): boolean {
+		return this.automationMode !== 'none' || this.editingLoopFrameId !== null
+	}
+
+	get isEditingAutomationLoop(): boolean {
+		return this.editingLoopFrameId !== null
+	}
+
+	getAutomationLoopText(): string {
+		return this.loopEditText
+	}
+
+	getActiveAutomationFrameId(): string | null {
+		return this.activeAutomationFrameId
+	}
+
+	getAutomationMode(): BindingMode {
+		return this.automationMode
+	}
+
+	private getAutomationCtx(): CanvasRenderingContext2D | null {
+		return this.bpScene.canvas.getContext('2d')
+	}
+
+	/** 绿框外框（开启自动化时含按钮条扩展行） */
+	getFrameOuterRect(frame: SavedSelectionFrame): Rect | null {
+		const nodes = this.bpScene.getNodesByIds(frame.nodeIds)
+		const base = computeSelectionBounds(nodes)
+		if (!base) return null
+		return computeAutomationOuterRect(base, !!frame.automation?.enabled)
+	}
+
+	/** 计算某绿框两侧门户锚点的当前几何（派生，随节点移动/视口变化） */
+	buildFramePortals(frame: SavedSelectionFrame): {
+		in: PortalAnchorGeometry[]
+		out: PortalAnchorGeometry[]
+	} {
+		const scene = this.bpScene
+		const zoom = scene.camera.zoom
+		const empty = { in: [] as PortalAnchorGeometry[], out: [] as PortalAnchorGeometry[] }
+		if (!frame.automation?.enabled) return empty
+		const outer = this.getFrameOuterRect(frame)
+		if (!outer) return empty
+		const bodyRect = getFrameBodyWorldRect(outer, true, zoom)
+
+		const build = (direction: PortalDirection): PortalAnchorGeometry[] => {
+			const bindings =
+				direction === 'in' ? frame.automation!.inputBindings : frame.automation!.outputBindings
+			const items: PortalLayoutInput[] = bindings.map((b) => {
+				const node = scene.getBlueprintNode(b.nodeId)
+				const port = node
+					? direction === 'in'
+						? node.getInputPort(b.anchorId)
+						: node.getOutputPort(b.anchorId)
+					: null
+				return {
+					binding: b,
+					worldY: port ? port.getWorldPosition().y : null
+				}
+			})
+			return layoutPortalAnchors(items, bodyRect, direction, zoom)
+		}
+
+		return { in: build('in'), out: build('out') }
+	}
+
+	/** 门户锚点是否已有外部连线（端点指向组内真实锚点） */
+	private isPortalConnected(p: PortalAnchorGeometry): boolean {
+		const scene = this.bpScene
+		for (const conn of scene.getAllConnections()) {
+			if (p.direction === 'in') {
+				if (conn.data.toNodeId === p.nodeId && conn.data.toAnchorId === p.anchorId) return true
+			} else {
+				if (conn.data.fromNodeId === p.nodeId && conn.data.fromAnchorId === p.anchorId) return true
+			}
+		}
+		return false
+	}
+
+	private setAutomationMode(frameId: string, mode: BindingMode): void {
+		if (this.automationMode === mode && this.activeAutomationFrameId === frameId) {
+			this.automationMode = 'none'
+			this.activeAutomationFrameId = null
+		} else {
+			this.automationMode = mode
+			this.activeAutomationFrameId = frameId
+		}
+		this.bpScene.requestRedraw()
+	}
+
+	private exitAutomationMode(): void {
+		this.automationMode = 'none'
+		this.activeAutomationFrameId = null
+		this.bpScene.requestRedraw()
+	}
+
+	private startLoopEdit(frameId: string): void {
+		const cfg = this.bpScene.getFrameAutomation(frameId)
+		if (!cfg?.enabled) return
+		this.editingLoopFrameId = frameId
+		this.loopEditText = String(cfg.loopCount)
+		this.bpScene.requestRedraw()
+	}
+
+	setLoopEditTextDirectly(v: string): void {
+		if (typeof v !== 'string' || v === this.loopEditText) return
+		this.loopEditText = v
+		this.bpScene.requestRedraw()
+	}
+
+	private commitLoopEdit(): void {
+		if (!this.editingLoopFrameId) return
+		const frameId = this.editingLoopFrameId
+		const n = clampLoopCount(parseInt(this.loopEditText, 10))
+		this.bpScene.configureFrameAutomation(frameId, { loopCount: n })
+		this.editingLoopFrameId = null
+		this.loopEditText = ''
+		this.bpScene.requestRedraw()
+	}
+
+	private cancelLoopEdit(): void {
+		this.editingLoopFrameId = null
+		this.loopEditText = ''
+		this.bpScene.requestRedraw()
+	}
+
+	commitAutomationLoopEdit(): void {
+		this.commitLoopEdit()
+	}
+
+	cancelAutomationLoopEdit(): void {
+		this.cancelLoopEdit()
+	}
+
+	getAutomationLoopEditWorldRect(): EditingFrameLabelWorldRectResult | null {
+		if (!this.editingLoopFrameId) return null
+		const scene = this.bpScene
+		const frame = scene.getSavedSelectionFrame(this.editingLoopFrameId)
+		if (!frame?.automation?.enabled) return null
+		const outer = this.getFrameOuterRect(frame)
+		if (!outer) return null
+		const ctx = this.getAutomationCtx()
+		if (!ctx) return null
+		const barRect = getAutomationBarWorldRect(outer, scene.camera.zoom)
+		const runState = scene.getFrameAutomationRunState(frame.id)
+		const layout = computeBarLayout(
+			ctx,
+			barRect,
+			scene.camera.zoom,
+			frame.automation,
+			this.automationMode,
+			runState
+		)
+		const r = layout.loopInput
+		return {
+			inputWorldRect: r,
+			textOriginWorldX: r.x + 6 / scene.camera.zoom,
+			textBaselineCenterWorldY: r.y + r.height / 2,
+			fontSizeWorld: 11 / scene.camera.zoom
+		}
+	}
+
+	/** 绑定模式下点击成员锚点：增删门户绑定 */
+	private toggleMemberPortBinding(
+		frameId: string,
+		direction: PortalDirection,
+		node: BlueprintNode,
+		port: Port
+	): void {
+		const scene = this.bpScene
+		const cfg = scene.getFrameAutomation(frameId)
+		if (!cfg?.enabled) return
+		const nodeName =
+			String(node.alias ?? node.title ?? node.data.title ?? node.id).trim() || node.id
+		const label = `${nodeName} · ${port.spec.label ?? port.spec.id}`
+		const next = toggleBinding(cfg, direction, node.id, port.spec.id, label, port.mediaType)
+		scene.configureFrameAutomation(
+			frameId,
+			direction === 'in' ? { inputBindings: next.bindings } : { outputBindings: next.bindings }
+		)
+	}
+
+	private handleAutomationBarHit(frameId: string, hit: AutomationBarHit): void {
+		const scene = this.bpScene
+		const cfg = scene.getFrameAutomation(frameId)
+		if (!cfg) return
+		switch (hit) {
+			case 'loop-minus':
+				scene.configureFrameAutomation(frameId, { loopCount: cfg.loopCount - 1 })
+				return
+			case 'loop-plus':
+				scene.configureFrameAutomation(frameId, { loopCount: cfg.loopCount + 1 })
+				return
+			case 'loop-input':
+				this.startLoopEdit(frameId)
+				return
+			case 'set-inputs':
+				this.setAutomationMode(frameId, 'binding-input')
+				return
+			case 'set-outputs':
+				this.setAutomationMode(frameId, 'binding-output')
+				return
+			case 'exit':
+				this.exitAutomationMode()
+				return
+			case 'run':
+				if (scene.getFrameAutomationRunState(frameId)?.status === 'running') return
+				scene.setFrameAutomationRunState(frameId, {
+					status: 'running',
+					currentIteration: 0,
+					totalIterations: cfg.loopCount
+				})
+				scene.requestFrameAutomationRun(frameId)
+				return
+		}
+	}
+
+	/**
+	 * 命中绿框自动化 UI（开关 / 按钮条 / 门户锚点 / 门户解绑×）。
+	 * 从顶层层叠顺序逆序遍历（后保存的框在上）。
+	 */
+	private hitTestAutomationControls(
+		screenPoint: Vector2
+	):
+		| { kind: 'toggle'; frameId: string }
+		| { kind: 'bar'; frameId: string; hit: AutomationBarHit }
+		| { kind: 'portal'; frameId: string; portal: PortalAnchorGeometry }
+		| { kind: 'portal-remove'; frameId: string; portal: PortalAnchorGeometry }
+		| null {
+		const scene = this.bpScene
+		const camera = scene.camera
+		const ctx = this.getAutomationCtx()
+		const frames = scene.getSavedSelectionFrames()
+		for (let i = frames.length - 1; i >= 0; i--) {
+			const frame = frames[i]
+			const nodes = scene.getNodesByIds(frame.nodeIds)
+			if (nodes.length < 2) continue
+			const outer = this.getFrameOuterRect(frame)
+			if (!outer) continue
+
+			if (frame.automation?.enabled) {
+				const portals = this.buildFramePortals(frame)
+				const allPortals = [...portals.in, ...portals.out]
+				const removed = hitTestPortalRemove(screenPoint, allPortals, camera)
+				if (removed) return { kind: 'portal-remove', frameId: frame.id, portal: removed }
+				// 绑定模式下，门户与最左/最右成员节点的真实锚点在框边线上几何重合，
+				// 点击必须让位给绑定模式（toggle 成员锚点 / 吞掉），不能从门户发起连线——
+				// 否则原地松手即触发 link-drop-on-canvas 弹出节点库面板。
+				// 门户右上角的「×」解绑仍由上方 hitTestPortalRemove 优先处理。
+				if (this.automationMode === 'none') {
+					const portal = hitTestPortalAnchor(screenPoint, allPortals, camera)
+					if (portal) return { kind: 'portal', frameId: frame.id, portal }
+				}
+
+				if (ctx) {
+					const barRect = getAutomationBarWorldRect(outer, camera.zoom)
+					const runState = scene.getFrameAutomationRunState(frame.id)
+					const barHit = hitTestAutomationBar(
+						screenPoint,
+						ctx,
+						barRect,
+						camera,
+						frame.automation,
+						this.activeAutomationFrameId === frame.id ? this.automationMode : 'none',
+						runState
+					)
+					if (barHit) return { kind: 'bar', frameId: frame.id, hit: barHit }
+				}
+			}
+
+			if (hitTestAutomationToggle(screenPoint, outer, camera)) {
+				return { kind: 'toggle', frameId: frame.id }
+			}
+		}
+		return null
+	}
+
+	/** 绑定模式下命中原版内部锚点（返回锚点+方向），用于候选高亮与点击绑定 */
+	private hitTestBindingCandidate(
+		screenPoint: Vector2
+	): { node: BlueprintNode; port: Port; direction: PortalDirection } | null {
+		if (this.automationMode === 'none' || !this.activeAutomationFrameId) return null
+		const scene = this.bpScene
+		const frame = scene.getSavedSelectionFrame(this.activeAutomationFrameId)
+		if (!frame) return null
+		const memberSet = new Set(frame.nodeIds)
+		const wantInput = this.automationMode === 'binding-input'
+		// 复用场景命中：沿成员节点端口做屏幕距离命中
+		const z = scene.camera.zoom
+		let best: { node: BlueprintNode; port: Port; direction: PortalDirection; d: number } | null =
+			null
+		for (const node of scene.getAllBlueprintNodes()) {
+			if (!memberSet.has(node.id)) continue
+			const ports = wantInput ? node.inputPorts : node.outputPorts
+			for (const port of ports) {
+				const sp = scene.camera.worldToScreen(port.getWorldPosition())
+				const d = Math.hypot(sp.x - screenPoint.x, sp.y - screenPoint.y)
+				if (d <= 22 * z && (!best || d < best.d)) {
+					best = { node, port, direction: wantInput ? 'in' : 'out', d }
+				}
+			}
+		}
+		return best ? { node: best.node, port: best.port, direction: best.direction } : null
+	}
+
 	private hitTestResizeHandle(
 		screenPoint: Vector2
 	): { node: BlueprintNode; corner: ResizeCorner } | null {
@@ -451,6 +794,7 @@ export class BlueprintEditorTool extends Tool {
 		this.pendingFromPort = null
 		this.pendingFromNode = null
 		this.magnetedPort = null
+		this.hoveredPortalKey = null
 		this.rightPanning = false
 		this.rightPanStarted = false
 		this.suppressContextMenu = false
@@ -512,6 +856,73 @@ export class BlueprintEditorTool extends Tool {
 				this.dragLastScreen.copy(event.screenPosition)
 				this.setCursor(resizeHit.node.getResizeCursor(resizeHit.corner))
 				scene.requestRedraw()
+				return
+			}
+
+			// —— 多选组合自动化：开关 / 按钮条 / 门户锚点 ——
+			const autoHit = this.hitTestAutomationControls(event.screenPosition)
+			if (autoHit) {
+				if (autoHit.kind === 'toggle') {
+					const cfg = scene.getFrameAutomation(autoHit.frameId)
+					scene.configureFrameAutomation(autoHit.frameId, {
+						enabled: !(cfg?.enabled === true)
+					})
+					if (this.activeAutomationFrameId !== autoHit.frameId) {
+						this.automationMode = 'none'
+						this.activeAutomationFrameId = null
+					}
+					scene.requestRedraw()
+					return
+				}
+				if (autoHit.kind === 'bar') {
+					this.handleAutomationBarHit(autoHit.frameId, autoHit.hit)
+					return
+				}
+				if (autoHit.kind === 'portal-remove') {
+					const acfg = scene.getFrameAutomation(autoHit.frameId)
+					if (acfg) {
+						const kept =
+							autoHit.portal.direction === 'in'
+								? acfg.inputBindings.filter((b) => b.id !== autoHit.portal.bindingId)
+								: acfg.outputBindings.filter((b) => b.id !== autoHit.portal.bindingId)
+						scene.configureFrameAutomation(
+							autoHit.frameId,
+							autoHit.portal.direction === 'in' ? { inputBindings: kept } : { outputBindings: kept }
+						)
+					}
+					return
+				}
+				// portal：从门户发起连线，代理到组内真实锚点（连线存储仍指向真实锚点）
+				const resolved = scene.resolveFramePortal(
+					autoHit.frameId,
+					autoHit.portal.direction,
+					autoHit.portal.bindingId
+				)
+				if (resolved) {
+					this.connecting = true
+					this.pendingFromPort = resolved.port
+					this.pendingFromNode = resolved.node
+					resolved.port.setArmed(true)
+					const worldPos = scene.screenToWorld(event.screenPosition)
+					scene.startPendingConnection(resolved.node, resolved.port, worldPos)
+					this.setCursor('crosshair')
+					scene.requestRedraw()
+					return
+				}
+			}
+
+			// 绑定模式：点击成员锚点 → toggle 绑定；点击其他位置 → 吞掉（不改选择、不框选）
+			if (this.automationMode !== 'none' && this.activeAutomationFrameId) {
+				const candidate = this.hitTestBindingCandidate(event.screenPosition)
+				if (candidate) {
+					this.toggleMemberPortBinding(
+						this.activeAutomationFrameId,
+						candidate.direction,
+						candidate.node,
+						candidate.port
+					)
+					return
+				}
 				return
 			}
 
@@ -708,11 +1119,18 @@ export class BlueprintEditorTool extends Tool {
 			let hoveredPort: Port | null = null
 			let hoveredNode: BlueprintNode | null = null
 			let compatible: boolean | null = null
+			let hoveredPortal: PortalAnchorGeometry | null = null
+
+			const fromIsInput = !!this.pendingFromPort?.isInput
 
 			if (hit && hit.node instanceof Port) {
 				hoveredPort = hit.node
 				hoveredNode = this.findParentNode(hoveredPort)
-				if (hoveredPort.isInput && hoveredNode !== this.pendingFromNode && this.pendingFromPort) {
+				if (
+					hoveredPort.isInput !== fromIsInput &&
+					hoveredNode !== this.pendingFromNode &&
+					this.pendingFromPort
+				) {
 					compatible = scene.isPortCompatible(this.pendingFromPort, hoveredPort)
 				} else {
 					compatible = false
@@ -723,15 +1141,34 @@ export class BlueprintEditorTool extends Tool {
 			let nearestDist = ANCHOR_MAGNET_DISTANCE
 			for (const node of scene.getAllBlueprintNodes()) {
 				if (node === this.pendingFromNode) continue
-				for (const inputPort of node.inputPorts) {
-					const portWorldPos = inputPort.getWorldPosition()
+				const candidates = fromIsInput ? node.outputPorts : node.inputPorts
+				for (const candidatePort of candidates) {
+					const portWorldPos = candidatePort.getWorldPosition()
 					const dist = Math.hypot(worldPos.x - portWorldPos.x, worldPos.y - portWorldPos.y)
 					if (dist < nearestDist && this.pendingFromPort) {
-						if (scene.isPortCompatible(this.pendingFromPort, inputPort)) {
+						if (scene.isPortCompatible(this.pendingFromPort, candidatePort)) {
 							nearestDist = dist
-							nearestPort = inputPort
+							nearestPort = candidatePort
 						}
 					}
+				}
+			}
+
+			// 门户锚点磁吸：落点为框边线门户时，代理到组内对侧真实锚点
+			let portalDist = ANCHOR_MAGNET_DISTANCE
+			for (const frame of scene.getSavedSelectionFrames()) {
+				if (!frame.automation?.enabled) continue
+				const portalsGeom = this.buildFramePortals(frame)
+				const candidates = fromIsInput ? portalsGeom.out : portalsGeom.in
+				for (const gp of candidates) {
+					const dist = Math.hypot(worldPos.x - gp.x, worldPos.y - gp.y)
+					if (dist >= portalDist || !this.pendingFromPort) continue
+					const resolved = scene.resolveFramePortal(frame.id, gp.direction, gp.bindingId)
+					if (!resolved || resolved.node === this.pendingFromNode) continue
+					if (!scene.isPortCompatible(this.pendingFromPort, resolved.port)) continue
+					portalDist = dist
+					hoveredPortal = gp
+					nearestPort = resolved.port
 				}
 			}
 
@@ -741,6 +1178,9 @@ export class BlueprintEditorTool extends Tool {
 			}
 
 			this.magnetedPort = hoveredPort
+			this.hoveredPortalKey = hoveredPortal
+				? `${hoveredPortal.direction}:${hoveredPortal.bindingId}`
+				: null
 
 			for (const node of scene.getAllBlueprintNodes()) {
 				for (const p of [...node.inputPorts, ...node.outputPorts]) {
@@ -748,7 +1188,14 @@ export class BlueprintEditorTool extends Tool {
 				}
 			}
 
-			if (hoveredPort && compatible) {
+			if (hoveredPortal && compatible) {
+				// 视觉上吸附到框边线门户（连线实体仍指向组内真实锚点）
+				scene.updatePendingConnection(
+					new Vector2(hoveredPortal.x, hoveredPortal.y),
+					hoveredPort,
+					compatible
+				)
+			} else if (hoveredPort && compatible) {
 				const snappedWorldPos = hoveredPort.getWorldPosition()
 				scene.updatePendingConnection(snappedWorldPos, hoveredPort, compatible)
 			} else {
@@ -1015,8 +1462,7 @@ export class BlueprintEditorTool extends Tool {
 					targetNode &&
 					this.pendingFromNode &&
 					this.pendingFromPort &&
-					targetPort.isInput &&
-					!this.pendingFromPort.isInput &&
+					targetPort.isInput !== this.pendingFromPort.isInput &&
 					targetNode !== this.pendingFromNode
 				) {
 					const connData = scene.completePendingConnection(targetNode, targetPort)
@@ -1042,6 +1488,7 @@ export class BlueprintEditorTool extends Tool {
 			this.pendingFromPort = null
 			this.pendingFromNode = null
 			this.magnetedPort = null
+			this.hoveredPortalKey = null
 			this.dragging = false
 			this.dragMoved = false
 			this.dragMode = DragMode.NONE
@@ -1407,6 +1854,15 @@ export class BlueprintEditorTool extends Tool {
 				}
 				this.setCursor('default')
 			}
+			// 自动化：Esc 先退出绑定模式/循环次数编辑，不影响节点选择
+			if (this.automationMode !== 'none') {
+				this.exitAutomationMode()
+				return
+			}
+			if (this.editingLoopFrameId) {
+				this.cancelLoopEdit()
+				return
+			}
 			sel.clearSelection()
 			sel.cancelMarquee()
 			this.manager!.drag.cancelDrag()
@@ -1455,14 +1911,65 @@ export class BlueprintEditorTool extends Tool {
 		// Draw saved (green) selection frames on top of nodes (dashed border only, no fill - won't obscure content)
 		// Note: Must draw in onRender because nodes have shadowBlur glow that extends beyond bounds
 		const savedFrames = scene.getSavedSelectionFrames()
+		const autoCtx = this.getAutomationCtx()
 		for (const frame of savedFrames) {
 			const nodes = scene.getNodesByIds(frame.nodeIds)
 			if (nodes.length < 2) {
 				continue
 			}
-			const bounds = computeSelectionBounds(nodes)
-			if (bounds) {
-				drawSelectionFrame(ctx.ctx, bounds, camera.zoom, true, frame.label, undefined, editState)
+			const baseBounds = computeSelectionBounds(nodes)
+			if (!baseBounds) continue
+			const enabled = !!frame.automation?.enabled
+			const outer = enabled ? computeAutomationOuterRect(baseBounds, true) : baseBounds
+			drawSelectionFrame(
+				ctx.ctx,
+				outer,
+				camera.zoom,
+				true,
+				frame.label,
+				undefined,
+				editState,
+				enabled ? AUTOMATION_BAR_VISUAL_HEIGHT / camera.zoom : 0
+			)
+
+			// 自动化开关（所有绿框均显示；开启态高亮）
+			drawAutomationToggle(ctx.ctx, outer, camera.zoom, enabled)
+
+			if (enabled && frame.automation) {
+				const barRect = getAutomationBarWorldRect(outer, camera.zoom)
+				const runState = scene.getFrameAutomationRunState(frame.id)
+				const mode = this.activeAutomationFrameId === frame.id ? this.automationMode : 'none'
+				if (autoCtx) {
+					drawAutomationBar(ctx.ctx, barRect, camera.zoom, frame.automation, mode, runState)
+				}
+
+				// 门户锚点
+				const portalsGeom = this.buildFramePortals(frame)
+				const allPortals = [...portalsGeom.in, ...portalsGeom.out]
+				const connected = new Set(
+					allPortals.filter((p) => this.isPortalConnected(p)).map((p) => p.bindingId)
+				)
+				drawPortalAnchors(ctx.ctx, allPortals, camera.zoom, {
+					hoveredBindingId: this.hoveredPortalKey
+						? (allPortals.find((p) => `${p.direction}:${p.bindingId}` === this.hoveredPortalKey)
+								?.bindingId ?? null)
+						: null,
+					connectedBindingIds: connected,
+					bindingMode: mode
+				})
+
+				// 绑定模式：成员候选锚点脉冲环
+				if (mode !== 'none' && this.activeAutomationFrameId === frame.id) {
+					const wantInput = mode === 'binding-input'
+					const candidates = nodes.flatMap((n) => {
+						const ports = wantInput ? n.inputPorts : n.outputPorts
+						return ports.map((p) => {
+							const wp = p.getWorldPosition()
+							return { x: wp.x, y: wp.y, mediaType: p.mediaType }
+						})
+					})
+					drawBindingCandidates(ctx.ctx, candidates, camera.zoom, wantInput ? 'in' : 'out')
+				}
 			}
 		}
 

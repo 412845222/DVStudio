@@ -22,6 +22,21 @@
 				@blur="onFrameLabelInputBlur"
 				@select="onFrameLabelInputSelect"
 			/>
+			<input
+				ref="automationLoopInputRef"
+				v-show="isAutomationLoopEditing"
+				v-model="automationLoopInputValue"
+				type="text"
+				inputmode="numeric"
+				class="bp-frame-label-input"
+				tabindex="0"
+				autocomplete="off"
+				spellcheck="false"
+				:style="automationLoopInputStyle"
+				@keydown.enter.prevent="onAutomationLoopInputEnter"
+				@keydown.esc.prevent="onAutomationLoopInputEsc"
+				@blur="onAutomationLoopInputBlur"
+			/>
 			<BlueprintDomOverlay
 				:scene="scene"
 				:chat-state="chatState"
@@ -291,6 +306,7 @@ interface Emits {
 	(e: 'nodeUpdateBlenderSettings', payload: { nodeId: string; patch: Record<string, any> }): void
 	(e: 'nodeBlenderCompressContext', payload: { nodeId: string }): void
 	(e: 'nodeOpenDirectorConsole', payload: { nodeId: string }): void
+	(e: 'frameAutomationRun', payload: { frameId: string }): void
 }
 
 const emit = defineEmits<Emits>()
@@ -418,6 +434,7 @@ function _syncFrameLabelTextToEngine(forceFullText = false): void {
 let _frameLabelRafId: number | null = null
 function _frameLabelRafLoop(): void {
 	_updateFrameLabelInputFromScene(false)
+	_updateAutomationLoopInputFromScene(false)
 	_frameLabelRafId = window.requestAnimationFrame(_frameLabelRafLoop)
 }
 
@@ -537,6 +554,126 @@ function onFrameLabelInputSelect(): void {
 }
 // ============================================================
 // END 多选框顶部透明输入框同步层
+// ============================================================
+
+// ============================================================
+// 多选组合自动化 · 循环次数：透明 DOM 数字输入（与标签输入同构，语义隔离）
+// ============================================================
+const automationLoopInputRef = ref<HTMLInputElement | null>(null)
+const automationLoopInputValue = ref('')
+const isAutomationLoopEditing = ref(false)
+let _automationLoopLastRectKey = ''
+const automationLoopPos = reactive({ left: 0, top: 0, width: 0, height: 0, fontSize: 12 })
+const automationLoopInputStyle = computed(() => ({
+	position: 'absolute' as const,
+	left: `${automationLoopPos.left}px`,
+	top: `${automationLoopPos.top}px`,
+	width: `${automationLoopPos.width}px`,
+	height: `${automationLoopPos.height}px`,
+	fontSize: `${automationLoopPos.fontSize}px`,
+	opacity: '0.02',
+	background: 'transparent',
+	color: '#000',
+	border: 'none',
+	outline: 'none',
+	padding: 0,
+	margin: 0,
+	boxSizing: 'border-box' as const,
+	caretColor: 'transparent',
+	zIndex: 50,
+	userSelect: 'text' as const,
+	lineHeight: `${automationLoopPos.fontSize}px`,
+	fontFamily:
+		'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace'
+}))
+
+function _updateAutomationLoopInputFromScene(force = false): void {
+	const s = scene.value
+	if (!s) {
+		isAutomationLoopEditing.value = false
+		return
+	}
+	const editing = s.isAutomationLoopEditing()
+	isAutomationLoopEditing.value = editing
+	if (!editing) {
+		_automationLoopLastRectKey = ''
+		return
+	}
+	const rect = s.getAutomationLoopEditWorldRect()
+	if (!rect || !containerRef.value) return
+	const cam = s.camera
+	const c = containerRef.value
+	const topLeft = cam.worldToScreen(new Vector2(rect.inputWorldRect.x, rect.inputWorldRect.y))
+	const bottomRight = cam.worldToScreen(
+		new Vector2(
+			rect.inputWorldRect.x + rect.inputWorldRect.width,
+			rect.inputWorldRect.y + rect.inputWorldRect.height
+		)
+	)
+	const w = Math.max(4, bottomRight.x - topLeft.x)
+	const h = Math.max(4, bottomRight.y - topLeft.y)
+	const left = topLeft.x - (c.clientLeft ?? 0)
+	const top = topLeft.y - (c.clientTop ?? 0)
+	const fontSize = Math.max(8, rect.fontSizeWorld * cam.zoom)
+	const key = `${left.toFixed(3)}|${top.toFixed(3)}|${w.toFixed(3)}|${h.toFixed(3)}|${fontSize.toFixed(3)}`
+	if (!force && key === _automationLoopLastRectKey) return
+	_automationLoopLastRectKey = key
+	automationLoopPos.left = left
+	automationLoopPos.top = top
+	automationLoopPos.width = w
+	automationLoopPos.height = h
+	automationLoopPos.fontSize = fontSize
+}
+
+watch(
+	isAutomationLoopEditing,
+	(editing, wasEditing) => {
+		const s = scene.value
+		if (editing && !wasEditing && s) {
+			automationLoopInputValue.value = s.getAutomationLoopText()
+			nextTick(() => {
+				_updateAutomationLoopInputFromScene(true)
+				const el = automationLoopInputRef.value
+				if (el) {
+					try {
+						el.focus({ preventScroll: true } as FocusOptions)
+						el.select()
+					} catch {
+						// ignore
+					}
+				}
+			})
+		}
+	},
+	{ flush: 'post' }
+)
+
+watch(automationLoopInputValue, () => {
+	if (!isAutomationLoopEditing.value) return
+	scene.value?.setAutomationLoopEditText(automationLoopInputValue.value)
+})
+
+function onAutomationLoopInputEnter(e: KeyboardEvent): void {
+	e.preventDefault()
+	e.stopPropagation()
+	scene.value?.commitAutomationLoopEdit()
+}
+
+function onAutomationLoopInputEsc(e: KeyboardEvent): void {
+	e.preventDefault()
+	e.stopPropagation()
+	scene.value?.cancelAutomationLoopEdit()
+	nextTick(() => canvasRef.value?.focus({ preventScroll: true } as FocusOptions))
+}
+
+function onAutomationLoopInputBlur(): void {
+	const s = scene.value
+	if (!s) return
+	if (!s.isAutomationLoopEditing()) return
+	s.commitAutomationLoopEdit()
+}
+// ============================================================
+// END 自动化循环次数透明输入
 // ============================================================
 
 let rafId: number | null = null
@@ -887,6 +1024,7 @@ let unsubDeselect: (() => void) | null = null
 let unsubViewport: (() => void) | null = null
 let unsubAfterCommand: (() => void) | null = null
 let unsubLinkDropOnCanvas: (() => void) | null = null
+let unsubFrameAutomationRun: (() => void) | null = null
 let onContainerDragOver: ((e: DragEvent) => void) | null = null
 let onContainerDrop: ((e: DragEvent) => void) | null = null
 let onContainerMouseMove: ((e: MouseEvent) => void) | null = null
@@ -1135,6 +1273,10 @@ onMounted(() => {
 		)
 	})
 
+	unsubFrameAutomationRun = s.on.on('frame-automation-run', (payload: unknown) => {
+		emit('frameAutomationRun', payload as { frameId: string })
+	})
+
 	if (containerRef.value) {
 		onContainerDragOver = (e: DragEvent) => {
 			if (e.dataTransfer) {
@@ -1200,6 +1342,7 @@ onUnmounted(() => {
 	if (unsubViewport) unsubViewport()
 	if (unsubAfterCommand) unsubAfterCommand()
 	if (unsubLinkDropOnCanvas) unsubLinkDropOnCanvas()
+	if (unsubFrameAutomationRun) unsubFrameAutomationRun()
 	if (containerRef.value) {
 		if (onContainerDragOver) containerRef.value.removeEventListener('dragover', onContainerDragOver)
 		if (onContainerDrop) containerRef.value.removeEventListener('drop', onContainerDrop)
@@ -1545,6 +1688,28 @@ defineExpose({
 	renameSavedSelectionFrame(frameId: string, newLabel: string): boolean {
 		if (!scene.value || props.readonly) return false
 		return scene.value.renameSavedSelectionFrame(frameId, newLabel)
+	},
+
+	configureFrameAutomation(frameId: string, patch: Record<string, any>): boolean {
+		if (!scene.value || props.readonly) return false
+		return scene.value.configureFrameAutomation(frameId, patch as any)
+	},
+
+	getFrameAutomation(frameId: string) {
+		return scene.value?.getFrameAutomation(frameId) ?? undefined
+	},
+
+	setFrameAutomationRunState(frameId: string, state: Record<string, any> | null) {
+		if (!scene.value) return
+		scene.value.setFrameAutomationRunState(frameId, state as any)
+	},
+
+	getFrameAutomationRunState(frameId: string) {
+		return scene.value?.getFrameAutomationRunState(frameId) ?? null
+	},
+
+	isFrameAutomationInteracting(): boolean {
+		return !!(scene.value && scene.value.isFrameAutomationInteracting())
 	},
 
 	getNodeCount(): number {

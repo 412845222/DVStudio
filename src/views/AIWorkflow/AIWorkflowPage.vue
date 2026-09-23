@@ -136,6 +136,7 @@
 				@node-blender-init-workspace="(p: any) => onBlenderInitWorkspace(p.nodeId)"
 				@node-update-blender-settings="(p: any) => onBlenderSettingsUpdate(p.nodeId, p.patch)"
 				@node-blender-compress-context="(p: any) => onBlenderCompressContext(p.nodeId)"
+				@frame-automation-run="onFrameAutomationRun"
 			>
 				<!-- 旧版ContextMenu (业务菜单) -->
 				<ContextMenu
@@ -1000,6 +1001,7 @@ import {
 	type InputParamPreviewRef
 } from './node-business/presentation/useAIWorkflowTextOutputResolver'
 import { useAIWorkflowSelectionFrame } from './blueprint-core/selection/useAIWorkflowSelectionFrame'
+import { useFrameAutomationRunner } from './automation/useFrameAutomationRunner'
 import { useGlobalTaskBridge } from '../../composables/useGlobalTaskBridge'
 import { useAIWorkflowTagEditor } from './blueprint-core/selection/useAIWorkflowTagEditor'
 import { isSceneLayoutModelTargetItem } from './node-business/scene/sceneDecomposeShared'
@@ -1180,6 +1182,7 @@ const {
 	saveSelectionFrame,
 	deleteSavedSelectionFrame,
 	getSavedSelectionFrames,
+	setFrameAutomationRunState,
 	worldToScreen
 } = useAIWorkflowBlueprintHost()
 
@@ -4207,7 +4210,7 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 			blenderAbortFns.delete(payload.nodeId)
 			store.commit('setNodeChatSubmitting', { submitting: false })
 		}
-		return
+		return true
 	}
 	let resolvedPrompt = payload.prompt
 	if (!resolvedPrompt.trim() && payload.nodeType !== 'model3d') {
@@ -4705,6 +4708,108 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 
 	if (result.ok && result.taskType === 'meshy-3d' && result.taskId && result.mode) {
 		startMeshyPoll(payload.nodeId, result.taskId, result.mode)
+	}
+	return result?.ok === true
+}
+
+// ========== 多选组合自动化（frame-automation）==========
+// 引擎只负责把「运行」点击以 frameId 上报；Host 层从权威状态取成员/组内边/循环次数，
+// 按拓扑序逐节点复用 onNodeChatSubmit 既有单节点链路，进度回写引擎按钮条，不新增后端通道。
+const FRAME_AUTOMATION_RUNNABLE_NODE_TYPES = new Set<WorkflowNodeChatSubmitPayload['nodeType']>([
+	'text',
+	'image',
+	'video',
+	'model3d'
+])
+const runningAutomationFrameIds = new Set<string>()
+
+const isFrameAutomationNodeRunnable = (nodeId: string): boolean => {
+	const node = store.state.nodesById[nodeId]
+	if (!node) return false
+	if (
+		!FRAME_AUTOMATION_RUNNABLE_NODE_TYPES.has(
+			String(node.type) as WorkflowNodeChatSubmitPayload['nodeType']
+		)
+	)
+		return false
+	const taskIds = store.state.nodeGenerationTaskIdsByNodeId?.[nodeId]
+	if (Array.isArray(taskIds)) {
+		const hasActiveTask = taskIds.some((taskId) => {
+			const task = store.state.nodeGenerationTasksById[taskId]
+			return task?.status === 'submitting' || task?.status === 'running'
+		})
+		if (hasActiveTask) return false
+	}
+	return true
+}
+
+const submitFrameAutomationNode = async (nodeId: string): Promise<boolean> => {
+	const node = store.state.nodesById[nodeId]
+	if (!node) return false
+	const payload: WorkflowNodeChatSubmitPayload = {
+		nodeId,
+		nodeType: String(node.type) as WorkflowNodeChatSubmitPayload['nodeType'],
+		prompt: String((node as any).nodeChatDraft ?? ''),
+		params: {
+			...(((node as any).nodeChatParams as Record<string, unknown> | undefined) ?? {})
+		} as WorkflowNodeChatSubmitPayload['params']
+	}
+	try {
+		const ok = await onNodeChatSubmit(payload)
+		return ok !== false
+	} catch (err) {
+		console.error('[FrameAutomation] 节点自动执行失败:', nodeId, err)
+		return false
+	}
+}
+
+const onFrameAutomationRun = async (payload: { frameId: string }): Promise<void> => {
+	const frameId = String(payload?.frameId ?? '')
+	if (!frameId || runningAutomationFrameIds.has(frameId)) return
+	const frame = store.state.savedSelectionFrames.find((item) => item.id === frameId)
+	if (!frame?.automation?.enabled) return
+
+	const memberSet = new Set(frame.nodeIds)
+	const memberIds = frame.nodeIds.filter((id) => !!store.state.nodesById[id])
+	if (memberIds.length < 2 || !memberIds.some(isFrameAutomationNodeRunnable)) {
+		// 引擎在点击时已先置 running，前置失败必须回写终态，否则按钮永久卡死无法重跑
+		setFrameAutomationRunState(frameId, { status: 'error' })
+		pushToast(t('aiworkflow.runtime.frameAutomation.noRunnableNode'), 'warn')
+		return
+	}
+
+	// 只取两端都在组内的边参与拓扑排序（跨框连线不决定组内执行顺序）
+	const edges = store.state.edgeOrder
+		.map((edgeId) => store.state.edgesById[edgeId])
+		.filter((edge): edge is WorkflowEdge => !!edge)
+		.filter((edge) => memberSet.has(edge.fromNodeId) && memberSet.has(edge.toNodeId))
+		.map((edge) => ({ fromNodeId: edge.fromNodeId, toNodeId: edge.toNodeId }))
+
+	runningAutomationFrameIds.add(frameId)
+	const runner = useFrameAutomationRunner({
+		submitNode: submitFrameAutomationNode,
+		isNodeRunnable: isFrameAutomationNodeRunnable,
+		onStateChange: (state) => {
+			setFrameAutomationRunState(frameId, state)
+		},
+		pushToast: (message, tone) => {
+			pushToast(message, tone)
+		}
+	})
+
+	try {
+		await runner.runFrameAutomation({
+			frameId,
+			nodeIds: memberIds,
+			loopCount: Math.max(1, Math.floor(Number(frame.automation.loopCount)) || 1),
+			edges
+		})
+	} catch (err) {
+		console.error('[FrameAutomation] 自动化运行异常:', frameId, err)
+		setFrameAutomationRunState(frameId, { status: 'error' })
+		pushToast(t('aiworkflow.runtime.frameAutomation.fatalError'), 'error')
+	} finally {
+		runningAutomationFrameIds.delete(frameId)
 	}
 }
 
