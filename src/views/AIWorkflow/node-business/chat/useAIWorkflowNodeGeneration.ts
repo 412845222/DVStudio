@@ -28,6 +28,7 @@ export type NodeGenerationApiDeps = {
 	resolveBackendFetchUrl?: (raw: string) => string
 	getProjectId?: () => number | null
 	pushToast?: (message: string, tone?: 'info' | 'warn' | 'error') => void
+	onTaskRegistered?: (task: WorkflowNodeGenerationTask) => Promise<void>
 	nodeResourceUrl?: (node: any) => string | null
 	createImageNodeAtCenter?: (url: string, name?: string) => string | null
 	createImageNodeAt?: (worldX: number, worldY: number, url: string, name?: string) => string | null
@@ -1464,6 +1465,16 @@ export const runNodeGenerationTask = async (
 	}
 
 	deps.store.commit('registerNodeGenerationTask', { task })
+	try {
+		await deps.onTaskRegistered?.(task)
+	} catch (err) {
+		updateTask(deps, task.id, {
+			status: 'error',
+			errorMessage: String(err),
+			finishedAt: Date.now()
+		})
+		return { ok: false, error: '自动化提交记录写入失败，未派发生成请求' }
+	}
 	deps.store.commit('setNodeChatSubmitting', { submitting: true })
 
 	const syncGlobalProgress = (patch: {

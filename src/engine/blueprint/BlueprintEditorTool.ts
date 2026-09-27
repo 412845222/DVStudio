@@ -81,6 +81,8 @@ export class BlueprintEditorTool extends Tool {
 	private rightPanStarted: boolean = false
 	private suppressContextMenu: boolean = false
 	private lastPanPos: Vector2 = new Vector2()
+	private pendingFrame: { frameId: string; portId: string } | undefined
+	private targetFrame: { frameId: string; portId: string } | undefined
 	private pendingFromPort: Port | null = null
 	private pendingFromNode: BlueprintNode | null = null
 	private magnetedPort: Port | null = null
@@ -465,7 +467,15 @@ export class BlueprintEditorTool extends Tool {
 		const nodes = this.bpScene.getNodesByIds(frame.nodeIds)
 		const base = computeSelectionBounds(nodes)
 		if (!base) return null
-		return computeAutomationOuterRect(base, !!frame.automation?.enabled)
+		return computeAutomationOuterRect(
+			base,
+			!!frame.automation?.enabled,
+			this.bpScene.camera.zoom,
+			Math.max(
+				frame.automation?.inputBindings.length || 0,
+				frame.automation?.outputBindings.length || 0
+			)
+		)
 	}
 
 	/** 计算某绿框两侧门户锚点的当前几何（派生，随节点移动/视口变化） */
@@ -643,11 +653,7 @@ export class BlueprintEditorTool extends Tool {
 				return
 			case 'run':
 				if (scene.getFrameAutomationRunState(frameId)?.status === 'running') return
-				scene.setFrameAutomationRunState(frameId, {
-					status: 'running',
-					currentIteration: 0,
-					totalIterations: cfg.loopCount
-				})
+
 				scene.requestFrameAutomationRun(frameId)
 				return
 		}
@@ -791,6 +797,8 @@ export class BlueprintEditorTool extends Tool {
 		this.resizeCorner = null
 		this.connecting = false
 		this.dragSavedFrameId = null
+		this.pendingFrame = undefined
+		this.targetFrame = undefined
 		this.pendingFromPort = null
 		this.pendingFromNode = null
 		this.magnetedPort = null
@@ -900,6 +908,7 @@ export class BlueprintEditorTool extends Tool {
 				)
 				if (resolved) {
 					this.connecting = true
+					this.pendingFrame = { frameId: autoHit.frameId, portId: autoHit.portal.bindingId }
 					this.pendingFromPort = resolved.port
 					this.pendingFromNode = resolved.node
 					resolved.port.setArmed(true)
@@ -1106,6 +1115,24 @@ export class BlueprintEditorTool extends Tool {
 		scene.requestRedraw()
 	}
 
+	private allowsFrameTarget(
+		node: BlueprintNode | null,
+		port: Port,
+		reference?: { frameId: string; portId: string }
+	): boolean {
+		if (!node || !this.pendingFromNode || !this.pendingFromPort) return false
+		const reversed = this.pendingFromPort.isInput
+		return this.bpScene.isFrameBoundaryConnectionAllowed({
+			id: 'preview',
+			fromNodeId: reversed ? node.id : this.pendingFromNode.id,
+			fromAnchorId: reversed ? port.spec.id : this.pendingFromPort.spec.id,
+			toNodeId: reversed ? this.pendingFromNode.id : node.id,
+			toAnchorId: reversed ? this.pendingFromPort.spec.id : port.spec.id,
+			fromFrame: reversed ? reference : this.pendingFrame,
+			toFrame: reversed ? this.pendingFrame : reference
+		})
+	}
+
 	onPointerMove(event: GraphPointerEvent, hit: HitTestResult | null): void {
 		const scene = this.bpScene
 		const sel = this.manager!.selection
@@ -1131,7 +1158,9 @@ export class BlueprintEditorTool extends Tool {
 					hoveredNode !== this.pendingFromNode &&
 					this.pendingFromPort
 				) {
-					compatible = scene.isPortCompatible(this.pendingFromPort, hoveredPort)
+					compatible =
+						scene.isPortCompatible(this.pendingFromPort, hoveredPort) &&
+						this.allowsFrameTarget(hoveredNode, hoveredPort)
 				} else {
 					compatible = false
 				}
@@ -1146,7 +1175,10 @@ export class BlueprintEditorTool extends Tool {
 					const portWorldPos = candidatePort.getWorldPosition()
 					const dist = Math.hypot(worldPos.x - portWorldPos.x, worldPos.y - portWorldPos.y)
 					if (dist < nearestDist && this.pendingFromPort) {
-						if (scene.isPortCompatible(this.pendingFromPort, candidatePort)) {
+						if (
+							scene.isPortCompatible(this.pendingFromPort, candidatePort) &&
+							this.allowsFrameTarget(node, candidatePort)
+						) {
 							nearestDist = dist
 							nearestPort = candidatePort
 						}
@@ -1155,6 +1187,7 @@ export class BlueprintEditorTool extends Tool {
 			}
 
 			// 门户锚点磁吸：落点为框边线门户时，代理到组内对侧真实锚点
+			this.targetFrame = undefined
 			let portalDist = ANCHOR_MAGNET_DISTANCE
 			for (const frame of scene.getSavedSelectionFrames()) {
 				if (!frame.automation?.enabled) continue
@@ -1165,8 +1198,16 @@ export class BlueprintEditorTool extends Tool {
 					if (dist >= portalDist || !this.pendingFromPort) continue
 					const resolved = scene.resolveFramePortal(frame.id, gp.direction, gp.bindingId)
 					if (!resolved || resolved.node === this.pendingFromNode) continue
-					if (!scene.isPortCompatible(this.pendingFromPort, resolved.port)) continue
+					if (
+						!scene.isPortCompatible(this.pendingFromPort, resolved.port) ||
+						!this.allowsFrameTarget(resolved.node, resolved.port, {
+							frameId: frame.id,
+							portId: gp.bindingId
+						})
+					)
+						continue
 					portalDist = dist
+					this.targetFrame = { frameId: frame.id, portId: gp.bindingId }
 					hoveredPortal = gp
 					nearestPort = resolved.port
 				}
@@ -1177,7 +1218,7 @@ export class BlueprintEditorTool extends Tool {
 				compatible = true
 			}
 
-			this.magnetedPort = hoveredPort
+			this.magnetedPort = compatible ? hoveredPort : null
 			this.hoveredPortalKey = hoveredPortal
 				? `${hoveredPortal.direction}:${hoveredPortal.bindingId}`
 				: null
@@ -1467,6 +1508,10 @@ export class BlueprintEditorTool extends Tool {
 				) {
 					const connData = scene.completePendingConnection(targetNode, targetPort)
 					if (connData) {
+						connData.fromFrame = this.pendingFromPort.isInput ? this.targetFrame : this.pendingFrame
+						connData.toFrame = this.pendingFromPort.isInput ? this.pendingFrame : this.targetFrame
+					}
+					if (connData && scene.isFrameBoundaryConnectionAllowed(connData)) {
 						scene.executeCommand(new CreateConnectionCommand(scene, connData))
 					}
 					completed = true
@@ -1485,6 +1530,8 @@ export class BlueprintEditorTool extends Tool {
 				})
 				scene.cancelPendingConnection()
 			}
+			this.pendingFrame = undefined
+			this.targetFrame = undefined
 			this.pendingFromPort = null
 			this.pendingFromNode = null
 			this.magnetedPort = null
@@ -1845,6 +1892,8 @@ export class BlueprintEditorTool extends Tool {
 				scene.cancelPendingConnection()
 				this.connecting = false
 				if (this.pendingFromPort) this.pendingFromPort.setArmed(false)
+				this.pendingFrame = undefined
+				this.targetFrame = undefined
 				this.pendingFromPort = null
 				this.pendingFromNode = null
 				for (const node of scene.getAllBlueprintNodes()) {
@@ -1920,7 +1969,17 @@ export class BlueprintEditorTool extends Tool {
 			const baseBounds = computeSelectionBounds(nodes)
 			if (!baseBounds) continue
 			const enabled = !!frame.automation?.enabled
-			const outer = enabled ? computeAutomationOuterRect(baseBounds, true) : baseBounds
+			const outer = enabled
+				? computeAutomationOuterRect(
+						baseBounds,
+						true,
+						this.bpScene.camera.zoom,
+						Math.max(
+							frame.automation?.inputBindings.length || 0,
+							frame.automation?.outputBindings.length || 0
+						)
+					)
+				: baseBounds
 			drawSelectionFrame(
 				ctx.ctx,
 				outer,

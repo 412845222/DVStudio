@@ -39,7 +39,7 @@ describe('ComfyUI node task controls', () => {
 			expect(wrapper.text()).not.toContain('nodes.comfyui.noHistoryTitle')
 			await wrapper
 				.findAll('button')
-				.find((b) => b.text() === '刷新模板与成功历史')!
+				.find((b) => b.text() === 'nodes.comfyui.refreshTemplates')!
 				.trigger('click')
 			expect(wrapper.emitted('refresh-history-check')).toHaveLength(1)
 			const run = wrapper.findAll('button').find((b) => b.text() === 'nodes.comfyui.run')

@@ -74,11 +74,13 @@ export const useAIWorkflowComfyConnection = (payload: {
 	onWorkflowChanged?: (nodeId: string, workflowPath: string) => void
 }) => {
 	const requestEpoch = new Map<string, number>()
+	const refreshRequests = new Map<string, Promise<void>>()
 	let generation = 0
 	const connectionEpoch = new Map<string, number>()
 	const disposeComfyConnection = () => {
 		generation++
 		requestEpoch.clear()
+		refreshRequests.clear()
 	}
 	// 将本地模板列表映射为下拉项
 	const mapLocalWorkflowsToListItems = (
@@ -171,6 +173,8 @@ export const useAIWorkflowComfyConnection = (payload: {
 			negativePrompt?: string
 			autoWireEnabled?: boolean
 			inputBindings?: Record<string, string>
+			seedPolicy?: 'preserve' | 'randomize'
+			confirmRetry?: boolean
 		}
 	) => {
 		const previous = payload.store.state.nodesById[nodeId] as
@@ -190,7 +194,11 @@ export const useAIWorkflowComfyConnection = (payload: {
 							templateResolution: undefined,
 							historyChecked: false,
 							historyInputMappings: undefined,
-							inputBindings: undefined
+							inputBindings: undefined,
+							resolutionState: undefined,
+							historyCandidates: undefined,
+							templateDiagnostics: undefined,
+							resolutionWarnings: undefined
 						}
 					: {}),
 				...(Object.prototype.hasOwnProperty.call(input, 'positivePrompt')
@@ -358,10 +366,30 @@ export const useAIWorkflowComfyConnection = (payload: {
 		}
 		payload.store.commit('setNodeComfyUISettings', {
 			nodeId,
-			comfyuiSettings: { historyChecked: false, historyError: undefined }
+			comfyuiSettings: {
+				historyChecked: false,
+				historyError: undefined,
+				resolutionState: 'resolving',
+				templateResolution: undefined,
+				historyInputMappings: undefined,
+				historyCandidates: undefined,
+				templateDiagnostics: undefined,
+				resolutionWarnings: undefined
+			}
 		})
 		try {
 			const res = await payload.comfyService.resolveHistory(baseUrl, workflowPath)
+			// JSON string survives Electron's renderer log capture (objects become [object Object]).
+			console.info(
+				'[ComfyUI:diagnostic]',
+				JSON.stringify({
+					event: 'resolve',
+					nodeId,
+					ok: res.ok,
+					error: res.ok ? undefined : res.error,
+					diagnostics: res.diagnostics
+				})
+			)
 			if (!current()) return false
 			if (!res.ok) {
 				payload.store.commit('setNodeComfyUISettings', {
@@ -369,6 +397,10 @@ export const useAIWorkflowComfyConnection = (payload: {
 					comfyuiSettings: {
 						historyChecked: true,
 						hasHistory: false,
+						resolutionState: 'blocked',
+						historyCandidates: res.candidates || [],
+						templateDiagnostics: res.diagnostics,
+						resolutionWarnings: res.warnings || [],
 						historyError: res.error,
 						historyGuideMessage: res.message || res.error,
 						historyGuideBaseUrl: baseUrl
@@ -401,6 +433,9 @@ export const useAIWorkflowComfyConnection = (payload: {
 					historyChecked: true,
 					hasHistory: res.hasHistory,
 					templateResolution: res.resolution,
+					resolutionState: 'ready',
+					templateDiagnostics: res.diagnostics,
+					resolutionWarnings: res.warnings || [],
 					historyPromptId: res.promptId,
 					historyTimestamp: res.timestamp,
 					historyMatchType: res.matchType,
@@ -434,6 +469,7 @@ export const useAIWorkflowComfyConnection = (payload: {
 				comfyuiSettings: {
 					historyChecked: true,
 					historyError: getErrorMessage(err),
+					resolutionState: 'blocked',
 					historyGuideMessage: getErrorMessage(err)
 				}
 			})
@@ -508,7 +544,7 @@ export const useAIWorkflowComfyConnection = (payload: {
 		}
 	}
 
-	const onRefreshHistoryCheck = async (nodeId: string) => {
+	const performRefreshHistoryCheck = async (nodeId: string) => {
 		const nodeRecord = payload.store.state.nodesById[nodeId]
 		const node = nodeRecord as
 			| {
@@ -551,8 +587,32 @@ export const useAIWorkflowComfyConnection = (payload: {
 		if (!workflowPath) return
 		const ok = await resolveHistoryForWorkflow(nodeId, baseUrl, workflowPath, workflowSource)
 		if (ok) {
-			payload.pushToast(t('nodes.comfyui.historyFound'), 'info')
+			payload.pushToast(t('nodes.comfyui.templateResolved'), 'info')
 		}
+	}
+
+	const onRefreshHistoryCheck = (nodeId: string): Promise<void> => {
+		const node = payload.store.state.nodesById[nodeId] as
+			| { comfyuiSettings?: { baseUrl?: string; workflowPath?: string } }
+			| undefined
+		const key = JSON.stringify([
+			generation,
+			payload.getSessionKey?.(),
+			nodeId,
+			node?.comfyuiSettings?.baseUrl,
+			node?.comfyuiSettings?.workflowPath
+		])
+		const pending = refreshRequests.get(key)
+		if (pending) return pending
+		const request = performRefreshHistoryCheck(nodeId)
+			.catch((err: unknown) => {
+				payload.pushToast(getErrorMessage(err), 'warn')
+			})
+			.finally(() => {
+				if (refreshRequests.get(key) === request) refreshRequests.delete(key)
+			})
+		refreshRequests.set(key, request)
+		return request
 	}
 
 	const onClearHistoryCache = async (nodeId: string) => {
@@ -627,11 +687,13 @@ export const useAIWorkflowComfyConnection = (payload: {
 						workflowPath?: string
 						templateResolution?: unknown
 						historyError?: string
+						resolutionState?: string
 					}
 			  }
 			| undefined
 		const settings = node?.comfyuiSettings
 		if (!settings?.baseUrl || !settings.workflowPath) return false
+		if (settings.resolutionState === 'resolving') return false
 		if (settings.templateResolution && !settings.historyError) return true
 		const path = settings.workflowPath
 		return resolveHistoryForWorkflow(

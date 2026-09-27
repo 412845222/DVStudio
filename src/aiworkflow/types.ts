@@ -832,10 +832,45 @@ export type ComfyTemplateResolution = {
 	snapshotId: string
 	source: string
 	schemaVersion: number
+	semanticHash?: string
+	fingerprintVersion?: number
+	nodeSchemaHash?: string
+}
+
+export type ComfyTemplateDiagnostics = {
+	resolverRevision?: string
+	error?: string
+	fileHash?: string
+	semanticHash?: string
+	conversion?: { error?: string | null; warnings?: string[]; unknownTypes?: string[] }
+	rejectedHistory?: { promptId: string; reason: string }[]
+	candidateComparisons?: Record<string, unknown>[]
+	schemaProbeError?: string
+	stage?: string
+	correlationId?: string
+	historyState?: string
+	associationState?: string
+	readiness?: string
+	archiveState?: string
+	scannedCount?: number
+}
+
+export type ComfyHistoryCandidate = {
+	path: string
+	name: string
+	promptId?: string
+	timestamp?: number
 }
 
 export type WorkflowComfyUINodeSettings = {
 	templateResolution?: ComfyTemplateResolution
+	templateDiagnostics?: ComfyTemplateDiagnostics
+	historyCandidates?: ComfyHistoryCandidate[]
+	resolutionWarnings?: string[]
+	resolutionState?: 'resolving' | 'ready' | 'blocked'
+	seedPolicy?: 'preserve' | 'randomize'
+	submissionUnknown?: boolean
+	confirmRetry?: boolean
 	inputBindings?: Record<string, string>
 	positivePromptEdited?: boolean
 	negativePromptEdited?: boolean
@@ -1481,6 +1516,8 @@ export type WorkflowNode = {
 }
 
 export type WorkflowEdge = {
+	fromFrame?: { frameId: string; portId: string }
+	toFrame?: { frameId: string; portId: string }
 	id: string
 	fromNodeId: string
 	fromAnchorId: string
@@ -1802,9 +1839,11 @@ export type WorkflowSelectionTag = {
 
 /**
  * 多选组合自动化流程配置（与引擎 frame-automation 子域同构）。
- * 门户绑定记录组内真实节点/锚点；连线实体仍指向真实锚点，门户仅为交互/渲染门面。
+ * 门户具有独立稳定 ID；连线的成员 node/anchor 字段是兼容投影。
  */
 export type FrameIoBinding = {
+	/** source-output replaces the member's sole output during a run. */
+	bindingMode?: 'target-input' | 'source-output'
 	id: string
 	nodeId: string
 	anchorId: string

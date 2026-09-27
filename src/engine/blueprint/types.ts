@@ -71,6 +71,8 @@ export interface BlueprintNodeData {
 }
 
 export interface ConnectionData {
+	fromFrame?: { frameId: string; portId: string }
+	toFrame?: { frameId: string; portId: string }
 	id: string
 	fromNodeId: string
 	fromAnchorId: string

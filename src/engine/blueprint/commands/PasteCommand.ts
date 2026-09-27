@@ -105,6 +105,9 @@ export class PasteCommand extends Command {
 			const newConnId = `conn_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
 			const newConnData: ConnectionData = {
 				...srcEdge,
+				// Pasting members alone expands frame endpoints to their concrete ports.
+				fromFrame: undefined,
+				toFrame: undefined,
 				id: newConnId,
 				fromNodeId: newFromId,
 				toNodeId: newToId

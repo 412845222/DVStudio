@@ -277,7 +277,7 @@ export function buildSnapshotFromSelection(
 		const edge = state.edgesById[eid]
 		if (!edge) continue
 		if (nodeIdSet.has(edge.fromNodeId) && nodeIdSet.has(edge.toNodeId)) {
-			validEdges.push(edge)
+			validEdges.push({ ...edge, fromFrame: undefined, toFrame: undefined })
 		}
 	}
 
@@ -509,6 +509,9 @@ export function mergeTemplateSnapshot(
 			toNodeId: newToId,
 			createdAt: Date.now()
 		}
+		// This merge imports nodes only; frame endpoints expand to remapped member ports.
+		delete newEdge.fromFrame
+		delete newEdge.toFrame
 		edges.push(newEdge)
 	}
 

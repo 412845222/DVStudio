@@ -153,9 +153,9 @@ const normalizeChatSelectedRefs = (v: unknown): WorkflowNodeChatSelectedRef[] | 
 function cloneFrameAutomation(
 	raw: SavedSelectionFrame['automation']
 ): SavedSelectionFrame['automation'] {
-	if (!raw || raw.enabled !== true) return undefined
+	if (!raw || typeof raw.enabled !== 'boolean') return undefined
 	return {
-		enabled: true,
+		enabled: raw.enabled,
 		loopCount: Number.isFinite(raw.loopCount) ? Number(raw.loopCount) : 1,
 		inputBindings: Array.isArray(raw.inputBindings) ? raw.inputBindings.map((b) => ({ ...b })) : [],
 		outputBindings: Array.isArray(raw.outputBindings)
@@ -2554,6 +2554,21 @@ const normalizeComfyUISettings = (raw: unknown): WorkflowComfyUINodeSettings | u
 			isRecord(raw.templateResolution) && isString(raw.templateResolution.contentHash)
 				? (raw.templateResolution as WorkflowComfyUINodeSettings['templateResolution'])
 				: undefined,
+		templateDiagnostics: isRecord(raw.templateDiagnostics) ? raw.templateDiagnostics : undefined,
+		historyCandidates: Array.isArray(raw.historyCandidates) ? raw.historyCandidates : undefined,
+		resolutionWarnings: Array.isArray(raw.resolutionWarnings)
+			? raw.resolutionWarnings.filter(isString)
+			: undefined,
+		// In-flight UI state must not survive a restart as a permanent run lock.
+		resolutionState:
+			raw.resolutionState === 'ready'
+				? 'ready'
+				: raw.resolutionState === 'blocked'
+					? 'blocked'
+					: undefined,
+		seedPolicy: raw.seedPolicy === 'randomize' ? 'randomize' : 'preserve',
+		submissionUnknown: raw.submissionUnknown === true,
+		confirmRetry: false,
 		inputBindings: isRecord(raw.inputBindings)
 			? (Object.fromEntries(
 					Object.entries(raw.inputBindings).filter(([, v]) => typeof v === 'string')
@@ -4286,6 +4301,10 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 						outputs: [],
 						// === ① 历史记录相关状态：必重置 ===
 						templateResolution: undefined,
+						templateDiagnostics: undefined,
+						historyCandidates: undefined,
+						resolutionWarnings: undefined,
+						resolutionState: undefined,
 						inputBindings: undefined,
 						historyChecked: false,
 						hasHistory: undefined,

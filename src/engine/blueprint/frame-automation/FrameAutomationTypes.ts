@@ -5,9 +5,11 @@ export type PortalDirection = 'in' | 'out'
 
 /**
  * 单元门户锚点与组内真实锚点的绑定。
- * 门户锚点只在交互/渲染层存在，连线实体仍指向 nodeId + anchorId（组内真实锚点）。
+ * 门户 ID 是新连线的稳定端点；nodeId + anchorId 是供既有业务模块使用的兼容投影。
  */
 export interface FrameIoBinding {
+	/** source-output replaces the member's sole output during a run. */
+	bindingMode?: 'target-input' | 'source-output'
 	/** 门户锚点业务稳定 ID：输入 fin_xxx / 输出 fout_xxx，用于序列化与命中 */
 	id: string
 	/** 被绑定的组内成员节点 ID */

@@ -5,7 +5,7 @@ import type { RenderContext } from '../graphbase/renderer/RenderContext'
 import type { HitTestResult, HitTestable } from '../graphbase/scene/interfaces'
 import type { Camera } from '../graphbase/renderer/Camera'
 import type { Scene } from '../graphbase/scene/Scene'
-import { MEDIA_TYPE_COLORS } from './types'
+import { MEDIA_TYPE_COLORS, type ConnectionData } from './types'
 import { getThemeManager } from './theme'
 
 const LINE_WIDTH = 2.5
@@ -27,24 +27,12 @@ export interface ConnectionEndpoints {
 }
 
 export class Connection extends Node {
-	data: {
-		id: string
-		fromNodeId: string
-		fromAnchorId: string
-		toNodeId: string
-		toAnchorId: string
-	}
+	data: ConnectionData
 	selected: boolean = false
 	private _endpoints: ConnectionEndpoints | null = null
 	private _mediaType: string = 'generic'
 
-	constructor(data: {
-		id: string
-		fromNodeId: string
-		fromAnchorId: string
-		toNodeId: string
-		toAnchorId: string
-	}) {
+	constructor(data: ConnectionData) {
 		super('connection', data.id)
 		this.data = data
 		this.selectable = true

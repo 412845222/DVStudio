@@ -65,11 +65,11 @@ describe('buildSubgraphPlan', () => {
 		expect(plan.order).toEqual(['a', 'b'])
 	})
 
-	it('忽略节点自环，不将其误判为成环', () => {
+	it('拒绝节点自环，避免错误执行', () => {
 		const edges: SubgraphEdge[] = [{ fromNodeId: 'a', toNodeId: 'a' }]
 		const plan = buildSubgraphPlan(['a'], edges)
-		expect(plan.order).toEqual(['a'])
-		expect(plan.cyclicNodeIds).toEqual([])
+		expect(plan.order).toEqual([])
+		expect(plan.cyclicNodeIds).toEqual(['a'])
 	})
 
 	it('检测有环子图并上报无法排序的环内节点', () => {

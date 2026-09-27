@@ -1,3 +1,4 @@
+import type { ConnectionData } from '../types'
 import { Command } from '../../graphbase/commands/Command'
 import type { BlueprintScene } from '../BlueprintScene'
 import type { FrameAutomationData } from '../frame-automation/FrameAutomationTypes'
@@ -8,6 +9,7 @@ import type { FrameAutomationData } from '../frame-automation/FrameAutomationTyp
  * 运行临时态（FrameAutomationRunState）不经由此命令，不持久化。
  */
 export class ConfigureFrameAutomationCommand extends Command {
+	private connections: ConnectionData[] = []
 	private scene: BlueprintScene
 	private frameId: string
 	private nextConfig: FrameAutomationData | undefined
@@ -29,12 +31,14 @@ export class ConfigureFrameAutomationCommand extends Command {
 	}
 
 	execute(): void {
+		this.connections = this.scene.getFrameConnectionSnapshot?.(this.frameId) ?? []
 		this.scene.setFrameAutomationInternal(this.frameId, cloneConfig(this.nextConfig))
 		this.scene.requestRedraw()
 	}
 
 	undo(): void {
 		this.scene.setFrameAutomationInternal(this.frameId, cloneConfig(this.prevConfig))
+		this.scene.restoreFrameConnectionSnapshot?.(this.connections)
 		this.scene.requestRedraw()
 	}
 }

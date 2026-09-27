@@ -5,8 +5,21 @@ import {
 	normalizeHistoryEntry
 } from './runtime/historyCatalog.mjs'
 import { resolveTemplate } from './runtime/templateResolver.mjs'
+import { RESOLVER_REVISION } from './runtime/templateDiagnostics.mjs'
+import { archiveScope } from './runtime/archiveScope.mjs'
+import {
+	submissionGuard,
+	withSubmissionLock,
+	normalizeSubmissionScope
+} from './runtime/submissionGuard.mjs'
+import { nodeSchemaHash } from './runtime/capabilityProfile.mjs'
 import { executionGraph, validatePromptInputs } from './runtime/executionGraph.mjs'
-import { bindText, bindUploadedFiles, refineTextMappings } from './runtime/inputBindings.mjs'
+import {
+	bindText,
+	bindUploadedFiles,
+	refineTextMappings,
+	refineMediaMappings
+} from './runtime/inputBindings.mjs'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -2958,7 +2971,7 @@ export async function runtimeListWorkflowFiles(ctx, payload) {
 	if (process.env.DVS_COMFY_LEGACY_RESOLVER === '1') return legacyListWorkflowFiles(ctx, payload)
 	const [files, catalog] = await Promise.all([
 		comfyJsonGet(ctx.httpClient, base + '/userdata?dir=workflows&recurse=true', 10000),
-		scanHistory(ctx.httpClient, base, ctx.localdb?.comfyuiHistorySnapshots)
+		scanHistory(ctx.httpClient, base, archiveScope(ctx, base).repo)
 	])
 	const workflows = [
 		...listLocalWorkflowItems(ctx),
@@ -2990,20 +3003,33 @@ async function resolveRuntimeTemplate(ctx, payload) {
 		client: ctx.httpClient,
 		base,
 		workflowPath,
-		repo: ctx.localdb?.comfyuiHistorySnapshots,
+		repo: archiveScope(ctx, base).repo,
 		snapshotId: payload.snapshotId,
 		readWorkflow: () => runtimeGetWorkflowFile(ctx, { baseUrl: base, workflowPath })
 	})
-	return { ...resolved, baseUrl: base }
+	return {
+		...resolved,
+		baseUrl: base,
+		diagnostics: {
+			...resolved.diagnostics,
+			appVersion: app?.getVersion?.(),
+			packaged: app?.isPackaged === true
+		}
+	}
 }
 
 export async function runtimeResolveHistoryPrompt(ctx, payload) {
 	if (process.env.DVS_COMFY_LEGACY_RESOLVER === '1') return legacyResolveHistoryPrompt(ctx, payload)
 	const resolved = await resolveRuntimeTemplate(ctx, payload)
 	if (!resolved.ok) return resolved
-	const info = refineTextMappings(resolved.promptGraph, analyzeInputNodes(resolved.promptGraph))
+	const info = refineMediaMappings(
+		resolved.promptGraph,
+		refineTextMappings(resolved.promptGraph, analyzeInputNodes(resolved.promptGraph)),
+		resolved.nodeSchemas
+	)
+	const { nodeSchemas: _nodeSchemas, ...publicResolution } = resolved
 	return {
-		...resolved,
+		...publicResolution,
 		matchType: resolved.promptId ? 'exact' : 'direct',
 		nodeCount: info.nodeCount,
 		imageInputs: info.images,
@@ -3023,20 +3049,75 @@ export async function runtimeResolveHistoryPrompt(ctx, payload) {
 }
 
 export async function runtimeRunWorkflow(ctx, payload) {
+	const endpoint = normalizeBaseUrl(payload?.baseUrl || getBaseUrl(ctx))
+	if (endpoint.error) return { ok: false, error: endpoint.error }
+	const workflowPath = String(payload?.workflowPath || '').trim()
+	if (!workflowPath) return { ok: false, error: 'workflowPath is required' }
+	const result = await withSubmissionLock(
+		ctx.httpClient,
+		JSON.stringify([
+			endpoint.base,
+			workflowPath,
+			normalizeSubmissionScope(payload?.submissionScope)
+		]),
+		() => executeRuntimeWorkflow(ctx, payload)
+	)
+	return {
+		...result,
+		diagnostics: {
+			correlationId: crypto.randomUUID(),
+			resolverRevision: RESOLVER_REVISION,
+			...result.diagnostics,
+			stage: 'run',
+			error: result.ok ? undefined : result.error,
+			appVersion: app?.getVersion?.(),
+			packaged: app?.isPackaged === true
+		}
+	}
+}
+
+async function executeRuntimeWorkflow(ctx, payload) {
 	if (process.env.DVS_COMFY_LEGACY_RESOLVER === '1') return legacyRunWorkflow(ctx, payload)
 	const p = payload || {}
+	const endpoint = normalizeBaseUrl(p.baseUrl || getBaseUrl(ctx))
+	if (endpoint.error) return { ok: false, error: endpoint.error }
+	const guard = submissionGuard(
+		ctx,
+		endpoint.base,
+		String(p.workflowPath || '').trim(),
+		normalizeSubmissionScope(p.submissionScope)
+	)
+	const recovered = await guard.reconcile(p.confirmRetry === true)
+	if (recovered) return recovered
 	const resolved = await resolveRuntimeTemplate(ctx, p)
 	if (!resolved.ok) return resolved
 	if (
 		(p.contentHash && p.contentHash !== resolved.resolution.contentHash) ||
-		(p.workflowHash && p.workflowHash !== resolved.resolution.workflowHash)
+		(p.semanticHash
+			? p.semanticHash !== resolved.resolution.semanticHash
+			: p.workflowHash && p.workflowHash !== resolved.resolution.workflowHash)
 	) {
 		return { ok: false, error: 'STALE_TEMPLATE', message: '模板已改变，请刷新检查后重新运行' }
 	}
+	if (p.nodeSchemaHash && p.nodeSchemaHash !== resolved.resolution.nodeSchemaHash)
+		return {
+			ok: false,
+			error: 'DEPENDENCY_CHANGED',
+			message: '当前服务节点定义已改变，请刷新检查并确认输入绑定'
+		}
 	const schemaResult = await comfyJsonGet(ctx.httpClient, resolved.baseUrl + '/object_info', 10000)
 	if (schemaResult.error)
 		return { ok: false, error: 'OBJECT_INFO_UNREACHABLE', message: schemaResult.error }
 	const graph = JSON.parse(JSON.stringify(executionGraph(resolved.promptGraph, schemaResult.data)))
+	if (
+		resolved.resolution.nodeSchemaHash &&
+		nodeSchemaHash(graph, schemaResult.data) !== resolved.resolution.nodeSchemaHash
+	)
+		return {
+			ok: false,
+			error: 'DEPENDENCY_CHANGED',
+			message: '解析期间服务节点定义发生变化，请重新检查模板'
+		}
 	const inputErrors = validatePromptInputs(graph, schemaResult.data)
 	if (inputErrors.length)
 		return {
@@ -3044,7 +3125,11 @@ export async function runtimeRunWorkflow(ctx, payload) {
 			error: 'INVALID_TEMPLATE_INPUTS',
 			message: '执行图参数不完整，请重新选择保存的模板并刷新检查：' + inputErrors.join('；')
 		}
-	const info = refineTextMappings(graph, analyzeInputNodes(graph))
+	const info = refineMediaMappings(
+		graph,
+		refineTextMappings(graph, analyzeInputNodes(graph)),
+		schemaResult.data
+	)
 	const mappings = {
 		imageInputs: info.images,
 		videoInputs: info.videos,
@@ -3097,32 +3182,51 @@ export async function runtimeRunWorkflow(ctx, payload) {
 	} catch (err) {
 		return { ok: false, error: 'INVALID_INPUT_BINDING', message: err.message }
 	}
-	randomizeSeedFromMappings(graph, mappings)
+	if (p.seedPolicy === 'randomize') randomizeSeedFromMappings(graph, mappings)
+	const finalErrors = validatePromptInputs(graph, schemaResult.data)
+	if (finalErrors.length)
+		return { ok: false, error: 'INVALID_TEMPLATE_INPUTS', message: finalErrors.join('；') }
+	const requestId = guard.begin()
+	// Preserve media targets; utility outputs must not replace video execution.
+	const outputTargets = info.outputs.length
+		? info.outputs.map((output) => String(output.nodeId))
+		: Object.keys(graph).filter((id) => schemaResult.data?.[graph[id].class_type]?.output_node)
 	const submit = await comfyJsonPost(
 		ctx.httpClient,
 		resolved.baseUrl + '/prompt',
 		{
 			prompt: graph,
-			...(info.outputs.length
-				? { partial_execution_targets: info.outputs.map((output) => String(output.nodeId)) }
-				: {}),
+			prompt_id: requestId,
+			...(outputTargets.length ? { partial_execution_targets: outputTargets } : {}),
 			client_id: crypto.randomBytes(16).toString('hex'),
-			extra_data: { extra_pnginfo: { workflow: resolved.workflow || {} }, create_time: Date.now() }
+			extra_data: {
+				extra_pnginfo: { workflow: resolved.workflow || {} },
+				create_time: Date.now(),
+				dvstudio_request_id: requestId
+			}
 		},
 		30000
 	)
-	if (submit.error)
+	if (submit.error) {
+		const uncertain = !submit.status || submit.status >= 500
+		guard.finish(requestId, uncertain ? 'submission_unknown' : 'rejected')
 		return {
 			ok: false,
-			error: 'COMFY_SUBMIT_FAILED',
-			message: submit.error,
+			error: uncertain ? 'SUBMISSION_UNKNOWN' : 'COMFY_SUBMIT_FAILED',
+			message: uncertain ? '提交结果未知，请检查 ComfyUI 队列，避免重复运行。' : submit.error,
 			status: submit.status || 502,
 			comfyuiError: submit.body,
 			textWriteDiagnostics
 		}
+	}
 	const promptId = String(submit.data?.prompt_id || '').trim()
+	guard.finish(requestId, promptId ? 'submitted' : 'submission_unknown', promptId)
 	if (!promptId)
-		return { ok: false, error: 'INVALID_PROMPT_RESPONSE', message: 'ComfyUI 未返回任务 ID' }
+		return {
+			ok: false,
+			error: 'SUBMISSION_UNKNOWN',
+			message: 'ComfyUI 未返回任务 ID，请检查队列避免重复提交'
+		}
 	return {
 		ok: true,
 		baseUrl: resolved.baseUrl,
@@ -4250,10 +4354,21 @@ export async function runtimeGetWorkflowFile(ctx, payload) {
 			} else {
 				text = String(res.body ?? res.rawBody ?? '')
 			}
+			if (typeof text === 'string' && text.charCodeAt(0) === 0xfeff) text = text.slice(1)
+			if (!String(text || '').trim())
+				return {
+					ok: false,
+					code: 'WORKFLOW_EMPTY_FILE',
+					error: '工作流文件为空，请选择有效文件或成功历史快照'
+				}
 			try {
 				workflow = JSON.parse(text)
 			} catch {
-				return { ok: false, error: 'invalid workflow json' }
+				return {
+					ok: false,
+					code: 'WORKFLOW_INVALID_JSON',
+					error: '工作流 JSON 损坏，请重新保存或选择成功历史快照'
+				}
 			}
 		}
 
@@ -5166,13 +5281,18 @@ export async function runtimeGetOutputs(ctx, payload) {
 		return { ok: false, error: `ComfyUI /history failed: ${result.error || 'unknown error'}` }
 	}
 	const completed = normalizeHistoryEntry(promptId, result.data?.[promptId])
+	const warnings = []
 	if (completed) {
 		try {
-			ctx.localdb?.comfyuiHistorySnapshots?.save(base, completed)
-		} catch {}
+			const repo = archiveScope(ctx, base).repo
+			if (!repo) throw new Error('archive unavailable')
+			repo.save(base, completed)
+		} catch {
+			warnings.push('任务已完成，但成功快照未能归档；服务重启后可能无法恢复此模板')
+		}
 	}
 	const media = extractMediaFromHistoryResult(base, result.data, promptId)
-	return { ok: true, baseUrl: base, promptId, media, result: result.data }
+	return { ok: true, baseUrl: base, promptId, media, result: result.data, warnings }
 }
 
 export async function runtimeCancelRun(ctx, payload) {

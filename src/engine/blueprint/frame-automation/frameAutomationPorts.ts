@@ -110,7 +110,7 @@ export function sanitizeFrameAutomation(
 ): FrameAutomationData | undefined {
 	if (!raw || typeof raw !== 'object') return undefined
 	const r = raw as Record<string, unknown>
-	if (r.enabled !== true) return undefined
+	if (typeof r.enabled !== 'boolean') return undefined
 
 	const memberSet = new Set(frameNodeIds)
 
@@ -136,6 +136,7 @@ export function sanitizeFrameAutomation(
 				id,
 				nodeId,
 				anchorId,
+				bindingMode: b.bindingMode === 'source-output' ? 'source-output' : 'target-input',
 				label: typeof b.label === 'string' ? b.label : undefined,
 				mediaType: port.mediaType
 			})
@@ -144,7 +145,7 @@ export function sanitizeFrameAutomation(
 	}
 
 	return {
-		enabled: true,
+		enabled: r.enabled,
 		loopCount: clampLoopCount(r.loopCount),
 		inputBindings: cleanList(r.inputBindings, 'in'),
 		outputBindings: cleanList(r.outputBindings, 'out')
@@ -156,7 +157,7 @@ export function pruneBindingsForNode(
 	data: FrameAutomationData | undefined,
 	removedNodeId: string
 ): FrameAutomationData | undefined {
-	if (!data?.enabled) return data
+	if (!data) return data
 	const prune = (list: FrameIoBinding[]) => list.filter((b) => b.nodeId !== removedNodeId)
 	return {
 		...data,

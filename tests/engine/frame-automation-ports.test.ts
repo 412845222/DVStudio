@@ -116,8 +116,8 @@ describe('sanitizeFrameAutomation', () => {
 	}
 	const getNode = (id: string) => nodes[id] ?? null
 
-	it('未开启自动化时返回 undefined', () => {
-		expect(sanitizeFrameAutomation({ enabled: false }, ['n1'], getNode)).toBeUndefined()
+	it('关闭自动化时保留配置，无效数据返回 undefined', () => {
+		expect(sanitizeFrameAutomation({ enabled: false }, ['n1'], getNode)?.enabled).toBe(false)
 		expect(sanitizeFrameAutomation(null, ['n1'], getNode)).toBeUndefined()
 		expect(sanitizeFrameAutomation({}, ['n1'], getNode)).toBeUndefined()
 	})

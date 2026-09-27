@@ -1,6 +1,6 @@
 import { getLocalDb } from './db.mjs'
 
-const TARGET_VERSION = 17
+const TARGET_VERSION = 19
 
 function readUserVersion(db) {
 	const row = db.prepare('PRAGMA user_version').get()
@@ -577,6 +577,25 @@ export function runV17(db) {
 	);`)
 }
 
+export function runV18(db) {
+	db.exec(`CREATE TABLE IF NOT EXISTS comfyui_profiles (
+		id TEXT PRIMARY KEY, endpoint TEXT NOT NULL, user_scope TEXT NOT NULL DEFAULT '',
+		created_at INTEGER NOT NULL, UNIQUE(endpoint, user_scope)
+	);`)
+}
+
+export function runV19(db) {
+	db.exec(`CREATE TABLE IF NOT EXISTS frame_automation_runs (
+ id TEXT PRIMARY KEY, project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+ frame_id TEXT NOT NULL, recipe_hash TEXT NOT NULL, recipe TEXT NOT NULL, status TEXT NOT NULL,
+ parent_run_id TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+ CREATE INDEX IF NOT EXISTS frame_runs_project ON frame_automation_runs(project_id,frame_id,created_at);
+ CREATE TABLE IF NOT EXISTS frame_automation_events (
+ run_id TEXT NOT NULL REFERENCES frame_automation_runs(id) ON DELETE CASCADE,
+ seq INTEGER NOT NULL, event_id TEXT NOT NULL, type TEXT NOT NULL, payload TEXT NOT NULL, created_at INTEGER NOT NULL,
+ PRIMARY KEY(run_id,seq), UNIQUE(run_id,event_id));`)
+}
+
 const MIGRATIONS = [
 	runV1,
 	runV2,
@@ -594,7 +613,9 @@ const MIGRATIONS = [
 	runV14,
 	runV15,
 	runV16,
-	runV17
+	runV17,
+	runV18,
+	runV19
 ]
 
 export function ensureSchema(db) {

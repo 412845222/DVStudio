@@ -46,7 +46,12 @@ export function readUiWidgets(node, info, linkedNames) {
 	const defs = { ...info?.input?.required, ...info?.input?.optional }
 	const inputs = Array.isArray(node.inputs) ? node.inputs : []
 	const values = node.widgets_values
-	const explicit = inputs.filter((i) => i?.widget?.name)
+	// Socketless display widgets (e.g. ResolutionSelector.preview) have no serialized
+	// value. Counting them shifts subsequent values or falsely rejects a valid file.
+	const explicit = inputs.filter((i) => {
+		const def = defs[i?.widget?.name]
+		return i?.widget?.name && !(def?.[1]?.socketless && !scalar(def))
+	})
 	const names = explicit.length
 		? explicit.map((i) => i.widget.name)
 		: Object.keys(defs).filter((k) => scalar(defs[k]) && !defs[k]?.[1]?.forceInput)

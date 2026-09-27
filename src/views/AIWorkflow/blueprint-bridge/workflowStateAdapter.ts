@@ -23,7 +23,7 @@ const LEGACY_SCHEMA_VERSION = 1
 function cloneFrameAutomationForLegacy(
 	c: WfFrameAutomationData | undefined
 ): SavedSelectionFrameData['automation'] {
-	if (!c || c.enabled !== true) return undefined
+	if (!c || typeof c.enabled !== 'boolean') return undefined
 	// mediaType 在 Host 域以宽松 string 承载（源自引擎 PortSpec.mediaType），
 	// 边界处窄化为引擎 MediaType 联合；装载时引擎另有 sanitize 兜底清洗。
 	const mapBinding = (b: WfFrameAutomationData['inputBindings'][number]) => ({
@@ -31,7 +31,7 @@ function cloneFrameAutomationForLegacy(
 		mediaType: b.mediaType as MediaType | undefined
 	})
 	return {
-		enabled: true,
+		enabled: c.enabled,
 		loopCount: c.loopCount,
 		inputBindings: Array.isArray(c.inputBindings) ? c.inputBindings.map(mapBinding) : [],
 		outputBindings: Array.isArray(c.outputBindings) ? c.outputBindings.map(mapBinding) : []
@@ -42,9 +42,9 @@ function cloneFrameAutomationForLegacy(
 function cloneFrameAutomationFromLegacy(
 	c: SavedSelectionFrameData['automation']
 ): WfFrameAutomationData | undefined {
-	if (!c || c.enabled !== true) return undefined
+	if (!c || typeof c.enabled !== 'boolean') return undefined
 	return {
-		enabled: true,
+		enabled: c.enabled,
 		loopCount: c.loopCount,
 		inputBindings: Array.isArray(c.inputBindings) ? c.inputBindings.map((b) => ({ ...b })) : [],
 		outputBindings: Array.isArray(c.outputBindings) ? c.outputBindings.map((b) => ({ ...b })) : []
@@ -65,15 +65,22 @@ export function workflowStateToLegacyBlueprint(state: WorkflowState): LegacyBlue
 		})
 		.join(',')
 	// 绿框自动化配置签名（开关/循环次数/绑定变化必须击穿缓存，避免 Rule 15 类问题）
-	const frameAutomationSig = (state.savedSelectionFrames ?? [])
-		.map((f) => {
-			if (!f.automation?.enabled) return `${f.id}:off`
-			const a = f.automation
-			const ins = a.inputBindings.map((b) => b.id).join('>')
-			const outs = a.outputBindings.map((b) => b.id).join('>')
-			return `${f.id}:on:${a.loopCount}:${ins}:${outs}`
+	const frameAutomationSig = JSON.stringify(
+		(state.savedSelectionFrames ?? []).map((f) => ({
+			id: f.id,
+			label: f.label,
+			nodeIds: f.nodeIds,
+			automation: f.automation
+		}))
+	)
+	const frameEndpointSig = JSON.stringify(
+		state.edgeOrder.map((id) => {
+			const e = state.edgesById[id]
+			return e
+				? [e.id, e.fromNodeId, e.fromAnchorId, e.toNodeId, e.toAnchorId, e.fromFrame, e.toFrame]
+				: id
 		})
-		.join(';')
+	)
 
 	const structureKey = [
 		state.nodeOrder.join(','),
@@ -87,7 +94,8 @@ export function workflowStateToLegacyBlueprint(state: WorkflowState): LegacyBlue
 		edgeCount,
 		resCount,
 		nodeSizeSig,
-		frameAutomationSig
+		frameAutomationSig,
+		frameEndpointSig
 	].join('|')
 
 	if (_cachedResult && _cacheKey === structureKey) {
@@ -174,6 +182,8 @@ export function workflowStateToLegacyBlueprint(state: WorkflowState): LegacyBlue
 				id: edge.id,
 				fromNodeId: edge.fromNodeId,
 				fromAnchorId: edge.fromAnchorId,
+				fromFrame: edge.fromFrame,
+				toFrame: edge.toFrame,
 				toNodeId: edge.toNodeId,
 				toAnchorId: edge.toAnchorId,
 				createdAt: edge.createdAt
@@ -249,6 +259,8 @@ export function legacyBlueprintToWorkflowState(
 				id: legacyEdge.id,
 				fromNodeId: legacyEdge.fromNodeId,
 				fromAnchorId: legacyEdge.fromAnchorId,
+				fromFrame: legacyEdge.fromFrame,
+				toFrame: legacyEdge.toFrame,
 				toNodeId: legacyEdge.toNodeId,
 				toAnchorId: legacyEdge.toAnchorId,
 				createdAt: legacyEdge.createdAt ?? Date.now()

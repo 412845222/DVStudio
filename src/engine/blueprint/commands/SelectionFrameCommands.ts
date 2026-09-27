@@ -1,5 +1,6 @@
 import { Command } from '../../graphbase/commands/Command'
 import type { BlueprintScene } from '../BlueprintScene'
+import type { ConnectionData } from '../types'
 import type { SavedSelectionFrame } from '../SelectionFrame'
 import type { FrameAutomationData } from '../frame-automation/FrameAutomationTypes'
 
@@ -42,6 +43,7 @@ export class DeleteSelectionFrameCommand extends Command {
 	private scene: BlueprintScene
 	private frameId: string
 	private deletedFrame: SavedSelectionFrame | null = null
+	private connections: ConnectionData[] = []
 
 	constructor(scene: BlueprintScene, frameId: string) {
 		super('delete-selection-frame')
@@ -50,6 +52,7 @@ export class DeleteSelectionFrameCommand extends Command {
 	}
 
 	execute(): void {
+		this.connections = this.scene.getFrameConnectionSnapshot?.(this.frameId) ?? []
 		this.deletedFrame = this.scene.getSavedSelectionFrame(this.frameId)
 		if (this.deletedFrame) {
 			this.deletedFrame = {
@@ -71,6 +74,7 @@ export class DeleteSelectionFrameCommand extends Command {
 				this.deletedFrame.id,
 				cloneAutomation(this.deletedFrame.automation)
 			)
+			this.scene.restoreFrameConnectionSnapshot?.(this.connections)
 			this.deletedFrame = null
 			this.scene.requestRedraw()
 		}
