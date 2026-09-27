@@ -3,12 +3,15 @@ import { Rect } from '../graphbase/core/Rect'
 import type { BlueprintNode } from './BlueprintNode'
 import { getThemeManager } from './theme'
 import { t } from './i18n'
+import type { FrameAutomationData } from './frame-automation/FrameAutomationTypes'
 
 export interface SavedSelectionFrame {
 	id: string
 	nodeIds: string[]
 	label: string
 	color?: string
+	/** 自动化流程配置（可选增量字段；缺省 = 普通分组，行为与旧版本完全一致） */
+	automation?: FrameAutomationData
 }
 
 const SELECTION_FRAME_PADDING = 12
@@ -58,7 +61,9 @@ export function drawSelectionFrame(
 	isSaved: boolean,
 	label?: string,
 	nodeCount?: number,
-	editState?: FrameEditState
+	editState?: FrameEditState,
+	/** 自动化按钮条视觉高度（world 单位，已按 zoom 换算）；开启自动化的绿框在 tag bar 与 body 间插入一行 */
+	automationBarWorldHeight: number = 0
 ): void {
 	const theme = getThemeManager()
 	const tokens = theme.tokens
@@ -91,13 +96,13 @@ export function drawSelectionFrame(
 	const w = worldRect.width
 	const h = worldRect.height
 
-	// Unified outer rect (spans tag bar + frame body)
+	// Unified outer rect (spans tag bar + optional automation bar + frame body)
 	const outerX = x
 	const outerY = y
 	const outerW = w
 	const outerH = h
-	const frameY = y + tagBarHeight
-	const frameH = h - tagBarHeight
+	const frameY = y + tagBarHeight + automationBarWorldHeight
+	const frameH = h - tagBarHeight - automationBarWorldHeight
 
 	// Dashed outer border (one unified rect covering tag bar + frame body)
 	ctx.lineWidth = lineWidth
@@ -688,5 +693,8 @@ export function getEditingFrameLabelWorldRect(
 
 export const SELECTION_FRAME_CONSTANTS = {
 	PADDING: SELECTION_FRAME_PADDING,
-	TAG_BAR_HEIGHT
+	TAG_BAR_HEIGHT,
+	DELETE_BTN_SIZE,
+	DELETE_BTN_MARGIN,
+	LABEL_EDIT_PADDING
 }

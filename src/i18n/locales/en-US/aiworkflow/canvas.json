@@ -1,4 +1,4 @@
-﻿{
+{
 	"aiworkflow.canvas.inputAnchors": "Input Anchors",
 	"aiworkflow.canvas.outputAnchors": "Output Anchors",
 	"aiworkflow.canvas.inputAnchor": "Input",
@@ -66,5 +66,12 @@
 	"aiworkflow.canvas.ports.referenceImage3": "Reference 3",
 	"aiworkflow.canvas.ports.referenceImage4": "Reference 4",
 	"aiworkflow.canvas.ports.modelOutput": "Model Output",
-	"aiworkflow.canvas.ports.previewImage": "Preview Image"
+	"aiworkflow.canvas.ports.previewImage": "Preview Image",
+	"aiworkflow.canvas.automation.toggleOn": "Automation: On",
+	"aiworkflow.canvas.automation.toggleOff": "Automation: Off",
+	"aiworkflow.canvas.automation.loop": "Loop",
+	"aiworkflow.canvas.automation.setInputs": "Set Inputs",
+	"aiworkflow.canvas.automation.setOutputs": "Set Outputs",
+	"aiworkflow.canvas.automation.run": "Run",
+	"aiworkflow.canvas.automation.exit": "Exit"
 }

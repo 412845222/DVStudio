@@ -14,6 +14,32 @@ import {
 describe.skipIf(!process.env.DVS_TEST_COMFY_URL)(
 	'live ComfyUI upload → execution → history replay',
 	() => {
+		it.skipIf(!process.env.DVS_TEST_COMFY_WORKFLOW)(
+			'resolves the selected live saved workflow without submitting a model task',
+			async () => {
+				const resolved = await runtimeResolveHistoryPrompt(
+					{ httpClient: getHttpClient() },
+					{
+						baseUrl: process.env.DVS_TEST_COMFY_URL!,
+						workflowPath: process.env.DVS_TEST_COMFY_WORKFLOW!
+					}
+				)
+				console.info(
+					'LIVE_COMFY_RESOLVE',
+					JSON.stringify({
+						ok: resolved.ok,
+						error: resolved.error,
+						nodeCount: resolved.nodeCount,
+						imageInputCount: resolved.imageInputs?.length,
+						outputCount: resolved.outputs?.length,
+						diagnostics: resolved.diagnostics
+					})
+				)
+				expect(resolved.ok, JSON.stringify(resolved.diagnostics)).toBe(true)
+				expect(resolved.resolution.contentHash).toBeTruthy()
+			},
+			60000
+		)
 		it('reads each currently available successful history independently of saved templates', async () => {
 			const baseUrl = process.env.DVS_TEST_COMFY_URL!
 			const ctx = { httpClient: getHttpClient() }

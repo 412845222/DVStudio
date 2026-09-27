@@ -147,10 +147,10 @@
 						<button
 							class="wf-comfy-btn wf-comfy-btn-xs"
 							type="button"
-							:disabled="status !== 'connected' || runStatus === 'running'"
+							:disabled="status !== 'connected' || runStatus === 'running' || resolving"
 							@click.stop="onRefreshHistory"
 						>
-							刷新模板与成功历史
+							{{ t('nodes.comfyui.refreshTemplates') }}
 						</button>
 						<button
 							class="wf-comfy-btn wf-comfy-btn-xs wf-comfy-btn-ghost wf-comfy-manage-btn"
@@ -208,6 +208,7 @@
 							class="wf-comfy-clear-history-btn"
 							type="button"
 							:title="t('nodes.comfyui.clearHistoryCache')"
+							:disabled="resolving || runStatus === 'running' || runStatus === 'canceling'"
 							@click.stop="onClearHistoryCache"
 						>
 							✕
@@ -238,6 +239,24 @@
 					<div v-if="templateReady && historyInputSummary" class="wf-comfy-history-inputs">
 						{{ historyInputSummary }}
 					</div>
+					<ComfyCompatibilityPanel
+						:diagnostics="comfyuiSettings?.templateDiagnostics"
+						:warnings="comfyuiSettings?.resolutionWarnings"
+					/>
+					<ComfyHistoryCandidateDialog
+						:candidates="comfyuiSettings?.historyCandidates || []"
+						:disabled="resolving || runStatus === 'running' || runStatus === 'canceling'"
+						@select="(path) => emit('select-workflow', { workflowPath: path })"
+					/>
+					<label class="wf-comfy-history-inputs">
+						<input
+							type="checkbox"
+							:checked="comfyuiSettings?.seedPolicy === 'randomize'"
+							:disabled="runStatus === 'running' || runStatus === 'canceling'"
+							@change="onSeedPolicyChange"
+						/>
+						{{ t('nodes.comfyui.randomizeSeed') }}
+					</label>
 					<div v-if="templateReady && bindingFields.length" class="wf-comfy-history-inputs">
 						<div v-for="(field, index) in bindingFields" :key="field.key">
 							{{ field.mediaType === 'image' ? '图片' : '视频' }} {{ index + 1 }} →
@@ -273,6 +292,7 @@
 
 				<div v-if="status === 'connected' && workflowPath" class="wf-comfy-row">
 					<div class="wf-comfy-label">{{ t('nodes.comfyui.positivePrompt') }}</div>
+					<div class="wf-comfy-hint">{{ t('nodes.comfyui.connectedTextOverride') }}</div>
 					<div class="wf-comfy-prompt">
 						<div
 							v-if="inputAnchorIndex >= 0"
@@ -417,6 +437,8 @@
 <script setup lang="ts">
 import { computed, onMounted, onBeforeUnmount, ref, nextTick, watch } from 'vue'
 import WorkflowNodeBase from '../WorkflowNodeBase.vue'
+import ComfyHistoryCandidateDialog from './comfy/ComfyHistoryCandidateDialog.vue'
+import ComfyCompatibilityPanel from './comfy/ComfyCompatibilityPanel.vue'
 import { useI18n } from '../../../i18n'
 import { openComfySetup } from '../../../electronBridge'
 import { COMFYUI_DEFAULT_BASE_URL } from '../../../store/aiworkflow/store'
@@ -810,6 +832,12 @@ const props = defineProps<{
 		hasHistory?: boolean
 		historyChecked?: boolean
 		templateResolution?: { contentHash: string; source: string }
+		templateDiagnostics?: import('../../../aiworkflow/types').ComfyTemplateDiagnostics
+		historyCandidates?: import('../../../aiworkflow/types').ComfyHistoryCandidate[]
+		resolutionWarnings?: string[]
+		resolutionState?: 'resolving' | 'ready' | 'blocked'
+		seedPolicy?: 'preserve' | 'randomize'
+		submissionUnknown?: boolean
 		inputBindings?: Record<string, string>
 		historyInputMappings?: {
 			imageInputs?: Array<{ nodeId: string; inputKey: string; displayName?: string }>
@@ -931,6 +959,8 @@ const emit = defineEmits<{
 			negativePrompt?: string
 			autoWireEnabled?: boolean
 			inputBindings?: Record<string, string>
+			seedPolicy?: 'preserve' | 'randomize'
+			confirmRetry?: boolean
 		}
 	): void
 	(e: 'connect-comfyui', payload: { baseUrl: string }): void
@@ -1016,7 +1046,9 @@ const progress = computed(() => {
 })
 const runStatusText = computed(() => String(props.comfyuiSettings?.statusText ?? ''))
 
+const resolving = computed(() => props.comfyuiSettings?.resolutionState === 'resolving')
 const runDisabled = computed(() => {
+	if (resolving.value) return true
 	if (status.value !== 'connected') return true
 	if (!workflowPath.value) return true
 	return runStatus.value === 'running' || runStatus.value === 'canceling'
@@ -1136,6 +1168,12 @@ function onRefreshHistory() {
 	emit('refresh-history-check')
 }
 
+function onSeedPolicyChange(event: Event) {
+	emit('update-comfyui-settings', {
+		seedPolicy: (event.target as HTMLInputElement).checked ? 'randomize' : 'preserve'
+	})
+}
+
 function onClearHistoryCache() {
 	emit('clear-history-cache')
 }
@@ -1240,6 +1278,10 @@ const svcRestartDisabled = computed(() => {
 })
 
 const onRun = () => {
+	if (props.comfyuiSettings?.submissionUnknown) {
+		if (!window.confirm(t('nodes.comfyui.confirmUnknownSubmission'))) return
+		emit('update-comfyui-settings', { confirmRetry: true })
+	}
 	emit('run-comfyui')
 }
 

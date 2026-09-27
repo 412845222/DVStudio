@@ -4,7 +4,8 @@ import type {
 	ConnectionData,
 	LegacyResourceData,
 	SavedSelectionFrameData,
-	PortSpec
+	PortSpec,
+	MediaType
 } from '../../../engine/blueprint/types'
 import type {
 	WorkflowState,
@@ -14,8 +15,41 @@ import type {
 	WorkflowAnchorSpec
 } from '../../../aiworkflow/types'
 import type { WorkflowResource } from '../../../aiworkflow/resource/types'
+import type { FrameAutomationData as WfFrameAutomationData } from '../../../aiworkflow/types'
 
 const LEGACY_SCHEMA_VERSION = 1
+
+/** 深拷贝自动化配置（Vuex → 引擎 legacy），缺省返回 undefined */
+function cloneFrameAutomationForLegacy(
+	c: WfFrameAutomationData | undefined
+): SavedSelectionFrameData['automation'] {
+	if (!c || typeof c.enabled !== 'boolean') return undefined
+	// mediaType 在 Host 域以宽松 string 承载（源自引擎 PortSpec.mediaType），
+	// 边界处窄化为引擎 MediaType 联合；装载时引擎另有 sanitize 兜底清洗。
+	const mapBinding = (b: WfFrameAutomationData['inputBindings'][number]) => ({
+		...b,
+		mediaType: b.mediaType as MediaType | undefined
+	})
+	return {
+		enabled: c.enabled,
+		loopCount: c.loopCount,
+		inputBindings: Array.isArray(c.inputBindings) ? c.inputBindings.map(mapBinding) : [],
+		outputBindings: Array.isArray(c.outputBindings) ? c.outputBindings.map(mapBinding) : []
+	}
+}
+
+/** 深拷贝自动化配置（引擎 legacy → Vuex），缺省返回 undefined */
+function cloneFrameAutomationFromLegacy(
+	c: SavedSelectionFrameData['automation']
+): WfFrameAutomationData | undefined {
+	if (!c || typeof c.enabled !== 'boolean') return undefined
+	return {
+		enabled: c.enabled,
+		loopCount: c.loopCount,
+		inputBindings: Array.isArray(c.inputBindings) ? c.inputBindings.map((b) => ({ ...b })) : [],
+		outputBindings: Array.isArray(c.outputBindings) ? c.outputBindings.map((b) => ({ ...b })) : []
+	}
+}
 
 let _cachedResult: LegacyBlueprintData | null = null
 let _cacheKey: string = ''
@@ -30,6 +64,24 @@ export function workflowStateToLegacyBlueprint(state: WorkflowState): LegacyBlue
 			return n ? `${id}:${n.width ?? 0}:${n.height ?? 0}:${n.sizeCustomized ? 1 : 0}` : id
 		})
 		.join(',')
+	// 绿框自动化配置签名（开关/循环次数/绑定变化必须击穿缓存，避免 Rule 15 类问题）
+	const frameAutomationSig = JSON.stringify(
+		(state.savedSelectionFrames ?? []).map((f) => ({
+			id: f.id,
+			label: f.label,
+			nodeIds: f.nodeIds,
+			automation: f.automation
+		}))
+	)
+	const frameEndpointSig = JSON.stringify(
+		state.edgeOrder.map((id) => {
+			const e = state.edgesById[id]
+			return e
+				? [e.id, e.fromNodeId, e.fromAnchorId, e.toNodeId, e.toAnchorId, e.fromFrame, e.toFrame]
+				: id
+		})
+	)
+
 	const structureKey = [
 		state.nodeOrder.join(','),
 		state.edgeOrder.join(','),
@@ -41,7 +93,9 @@ export function workflowStateToLegacyBlueprint(state: WorkflowState): LegacyBlue
 		nodeCount,
 		edgeCount,
 		resCount,
-		nodeSizeSig
+		nodeSizeSig,
+		frameAutomationSig,
+		frameEndpointSig
 	].join('|')
 
 	if (_cachedResult && _cacheKey === structureKey) {
@@ -128,6 +182,8 @@ export function workflowStateToLegacyBlueprint(state: WorkflowState): LegacyBlue
 				id: edge.id,
 				fromNodeId: edge.fromNodeId,
 				fromAnchorId: edge.fromAnchorId,
+				fromFrame: edge.fromFrame,
+				toFrame: edge.toFrame,
 				toNodeId: edge.toNodeId,
 				toAnchorId: edge.toAnchorId,
 				createdAt: edge.createdAt
@@ -150,7 +206,8 @@ export function workflowStateToLegacyBlueprint(state: WorkflowState): LegacyBlue
 				id: frame.id,
 				nodeIds: [...frame.nodeIds],
 				label: frame.label,
-				createdAt: frame.createdAt ?? Date.now()
+				createdAt: frame.createdAt ?? Date.now(),
+				automation: cloneFrameAutomationForLegacy(frame.automation)
 			})
 		}
 	}
@@ -202,6 +259,8 @@ export function legacyBlueprintToWorkflowState(
 				id: legacyEdge.id,
 				fromNodeId: legacyEdge.fromNodeId,
 				fromAnchorId: legacyEdge.fromAnchorId,
+				fromFrame: legacyEdge.fromFrame,
+				toFrame: legacyEdge.toFrame,
 				toNodeId: legacyEdge.toNodeId,
 				toAnchorId: legacyEdge.toAnchorId,
 				createdAt: legacyEdge.createdAt ?? Date.now()
@@ -224,7 +283,8 @@ export function legacyBlueprintToWorkflowState(
 				id: frame.id,
 				nodeIds: [...frame.nodeIds],
 				label: frame.label,
-				createdAt: frame.createdAt ?? Date.now()
+				createdAt: frame.createdAt ?? Date.now(),
+				automation: cloneFrameAutomationFromLegacy(frame.automation)
 			})
 		}
 	}

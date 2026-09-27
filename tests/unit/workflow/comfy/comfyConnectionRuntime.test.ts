@@ -76,6 +76,51 @@ afterEach(() => {
 	vi.unstubAllGlobals()
 })
 describe('ComfyUI blueprint connection and task boundary', () => {
+	it('consumes retry consent once before asynchronous template checking', async () => {
+		vi.stubGlobal('window', { setInterval, clearInterval })
+		vi.spyOn(console, 'log').mockImplementation(() => {})
+		vi.spyOn(console, 'warn').mockImplementation(() => {})
+		vi.spyOn(console, 'error').mockImplementation(() => {})
+		const { state, service, payload } = fixture()
+		state.nodesById.c.comfyuiSettings.confirmRetry = true
+		payload.ensureComfyTemplate = async () => true
+		const runtime = useAIWorkflowComfyRuntime(payload)
+		await runtime.onComfyUIRun('c')
+		const calls = service.run.mock.calls as unknown as Array<
+			[string, string, unknown[], { confirmRetry?: boolean }]
+		>
+		expect(calls[0][3].confirmRetry).toBe(true)
+		expect(state.nodesById.c.comfyuiSettings.confirmRetry).toBe(false)
+		await runtime.onComfyUIRun('c')
+		expect(calls[1][3].confirmRetry).toBe(false)
+		runtime.disposeComfyRuntime()
+	})
+	it('clears stale resolution/mappings and presents candidates after refresh fails', async () => {
+		const { state, service, payload } = fixture()
+		state.nodesById.c.comfyuiSettings.templateResolution = { contentHash: 'old' }
+		service.resolveHistory.mockResolvedValue({
+			ok: false,
+			error: 'NO_MATCHING_HISTORY',
+			candidates: [{ path: 'history://candidate', name: 'Candidate' }]
+		} as never)
+		await useAIWorkflowComfyConnection(payload).onRefreshHistoryCheck('c')
+		const settings = state.nodesById.c.comfyuiSettings
+		expect(settings.templateResolution).toBeUndefined()
+		expect(settings.historyInputMappings).toBeUndefined()
+		expect(settings.resolutionState).toBe('blocked')
+		expect(settings.historyCandidates[0].path).toBe('history://candidate')
+	})
+	it('coalesces repeated refresh clicks without submitting any task', async () => {
+		const { service, payload } = fixture()
+		const connection = useAIWorkflowComfyConnection(payload)
+		await Promise.all([
+			connection.onRefreshHistoryCheck('c'),
+			connection.onRefreshHistoryCheck('c')
+		])
+		expect(service.listWorkflows).toHaveBeenCalledTimes(1)
+		expect(service.resolveHistory).toHaveBeenCalledTimes(1)
+		expect(service.run).not.toHaveBeenCalled()
+	})
 	it('submits connected image and text together and displays actionable backend errors', async () => {
 		vi.stubGlobal('window', { setInterval, clearInterval })
 		vi.spyOn(console, 'log').mockImplementation(() => {})
@@ -155,5 +200,72 @@ describe('ComfyUI blueprint connection and task boundary', () => {
 		await useAIWorkflowComfyConnection(payload).onRefreshHistoryCheck('c')
 		expect(state.nodesById.c.comfyuiSettings.workflows).toEqual([{ path: 'history://new' }])
 		expect(service.resolveHistory).not.toHaveBeenCalled()
+	})
+})
+
+describe('ComfyUI connected text overrides', () => {
+	it.each(['plain', 'aggregate'])(
+		'reads text on a %s generic input and replaces the panel prompt',
+		async (kind) => {
+			const { state, service, payload } = fixture()
+			payload.submissionOnly = true
+			state.nodesById.c.inputs = [
+				kind === 'plain'
+					? { id: 'in', mediaType: 'generic' }
+					: {
+							id: 'in',
+							mediaType: 'generic',
+							acceptedMediaTypes: ['text', 'image'],
+							multiInput: true
+						}
+			]
+			state.nodesById.c.comfyuiSettings.positivePrompt = 'old panel prompt'
+			state.nodesById.t = {
+				id: 't',
+				type: 'text',
+				textValue: 'new connected prompt',
+				outputs: [{ id: 'out-0', mediaType: 'text' }]
+			}
+			state.edgesById.et = {
+				id: 'et',
+				fromNodeId: 't',
+				fromAnchorId: 'out-0',
+				toNodeId: 'c',
+				toAnchorId: 'in'
+			}
+			state.edgeOrder.push('et')
+			const runtime = useAIWorkflowComfyRuntime(payload)
+			await runtime.onComfyUIRun('c')
+			const args = service.run.mock.calls[0] as any[]
+			expect(args[3].positivePrompt).toBe('new connected prompt')
+			expect(args[2]).toHaveLength(2)
+			runtime.disposeComfyRuntime()
+		}
+	)
+	it('preserves a connected empty string as an explicit override', async () => {
+		const { state, service, payload } = fixture()
+		payload.submissionOnly = true
+		state.nodesById.c.inputs = [{ id: 'in', mediaType: 'generic' }]
+		state.nodesById.c.comfyuiSettings.positivePrompt = 'old panel prompt'
+		state.nodesById.t = { id: 't', type: 'text', textValue: '', outputs: [] }
+		state.edgesById.et = { id: 'et', fromNodeId: 't', toNodeId: 'c', toAnchorId: 'in' }
+		state.edgeOrder.push('et')
+		const runtime = useAIWorkflowComfyRuntime(payload)
+		await runtime.onComfyUIRun('c')
+		expect((service.run.mock.calls[0] as any[])[3].positivePrompt).toBe('')
+		runtime.disposeComfyRuntime()
+	})
+	it('keeps configured/template values when there is no text connection', async () => {
+		const { state, service, payload } = fixture()
+		payload.submissionOnly = true
+		state.nodesById.c.inputs = [{ id: 'in', mediaType: 'generic' }]
+		state.nodesById.c.comfyuiSettings.positivePrompt = 'panel'
+		const runtime = useAIWorkflowComfyRuntime(payload)
+		await runtime.onComfyUIRun('c')
+		expect((service.run.mock.calls[0] as any[])[3]).toMatchObject({
+			positivePrompt: 'panel',
+			negativePrompt: undefined
+		})
+		runtime.disposeComfyRuntime()
 	})
 })

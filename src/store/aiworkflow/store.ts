@@ -149,6 +149,21 @@ const normalizeChatSelectedRefs = (v: unknown): WorkflowNodeChatSelectedRef[] | 
 	return result
 }
 
+/** 深拷贝绿框自动化配置（hydrate/快照装载用），无效或关闭态返回 undefined */
+function cloneFrameAutomation(
+	raw: SavedSelectionFrame['automation']
+): SavedSelectionFrame['automation'] {
+	if (!raw || typeof raw.enabled !== 'boolean') return undefined
+	return {
+		enabled: raw.enabled,
+		loopCount: Number.isFinite(raw.loopCount) ? Number(raw.loopCount) : 1,
+		inputBindings: Array.isArray(raw.inputBindings) ? raw.inputBindings.map((b) => ({ ...b })) : [],
+		outputBindings: Array.isArray(raw.outputBindings)
+			? raw.outputBindings.map((b) => ({ ...b }))
+			: []
+	}
+}
+
 const normalizeSceneLayoutLightingControls = (
 	raw: unknown
 ): WorkflowSceneLayoutLightingControls => {
@@ -2539,6 +2554,21 @@ const normalizeComfyUISettings = (raw: unknown): WorkflowComfyUINodeSettings | u
 			isRecord(raw.templateResolution) && isString(raw.templateResolution.contentHash)
 				? (raw.templateResolution as WorkflowComfyUINodeSettings['templateResolution'])
 				: undefined,
+		templateDiagnostics: isRecord(raw.templateDiagnostics) ? raw.templateDiagnostics : undefined,
+		historyCandidates: Array.isArray(raw.historyCandidates) ? raw.historyCandidates : undefined,
+		resolutionWarnings: Array.isArray(raw.resolutionWarnings)
+			? raw.resolutionWarnings.filter(isString)
+			: undefined,
+		// In-flight UI state must not survive a restart as a permanent run lock.
+		resolutionState:
+			raw.resolutionState === 'ready'
+				? 'ready'
+				: raw.resolutionState === 'blocked'
+					? 'blocked'
+					: undefined,
+		seedPolicy: raw.seedPolicy === 'randomize' ? 'randomize' : 'preserve',
+		submissionUnknown: raw.submissionUnknown === true,
+		confirmRetry: false,
 		inputBindings: isRecord(raw.inputBindings)
 			? (Object.fromEntries(
 					Object.entries(raw.inputBindings).filter(([, v]) => typeof v === 'string')
@@ -3519,9 +3549,12 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 				state.selectionTagsByKey = {}
 			}
 			state.nodeCheckboxVisible = isBoolean(s.nodeCheckboxVisible) ? s.nodeCheckboxVisible : true
-			// 已保存选区框
+			// 已保存选区框（含自动化配置，逐帧拷贝避免引用串改）
 			if (isArray(s.savedSelectionFrames)) {
-				state.savedSelectionFrames = s.savedSelectionFrames as SavedSelectionFrame[]
+				state.savedSelectionFrames = (s.savedSelectionFrames as SavedSelectionFrame[]).map((f) => ({
+					...f,
+					automation: cloneFrameAutomation(f.automation)
+				}))
 			} else {
 				state.savedSelectionFrames = []
 			}
@@ -4268,6 +4301,10 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 						outputs: [],
 						// === ① 历史记录相关状态：必重置 ===
 						templateResolution: undefined,
+						templateDiagnostics: undefined,
+						historyCandidates: undefined,
+						resolutionWarnings: undefined,
+						resolutionState: undefined,
 						inputBindings: undefined,
 						historyChecked: false,
 						hasHistory: undefined,
@@ -5233,9 +5270,12 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			} else {
 				state.selectionTagsByKey = {}
 			}
-			// 已保存选区框
+			// 已保存选区框（含自动化配置）
 			if (Array.isArray(snap.savedSelectionFrames)) {
-				state.savedSelectionFrames = snap.savedSelectionFrames
+				state.savedSelectionFrames = snap.savedSelectionFrames.map((f) => ({
+					...f,
+					automation: cloneFrameAutomation(f.automation)
+				}))
 			} else {
 				state.savedSelectionFrames = []
 			}
@@ -6089,13 +6129,22 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 			if (!key) return
 			delete state.selectionTagsByKey[key]
 		},
-		// —— 已保存选区框（持久化实体） ——
-		upsertSavedSelectionFrame(state, payload: { id: string; label: string; nodeIds: string[] }) {
+		// —— 已保存选区框（持久化实体，含自动化配置） ——
+		upsertSavedSelectionFrame(
+			state,
+			payload: {
+				id: string
+				label: string
+				nodeIds: string[]
+				automation?: SavedSelectionFrame['automation']
+			}
+		) {
 			const id = String(payload?.id ?? '').trim()
 			if (!id) return
 			const label = String(payload?.label ?? '').trim()
 			const nodeIds = Array.isArray(payload?.nodeIds) ? payload.nodeIds.slice().sort() : []
 			const now = Date.now()
+			const automation = cloneFrameAutomation(payload.automation)
 
 			const existingIdx = state.savedSelectionFrames.findIndex(
 				(f: SavedSelectionFrame) => f.id === id
@@ -6104,10 +6153,11 @@ export const AIWorkflowStore = createStore<WorkflowState>({
 				state.savedSelectionFrames[existingIdx] = {
 					...state.savedSelectionFrames[existingIdx],
 					label,
-					nodeIds
+					nodeIds,
+					...(automation !== undefined || payload.automation !== undefined ? { automation } : {})
 				}
 			} else {
-				state.savedSelectionFrames.push({ id, label, nodeIds, createdAt: now })
+				state.savedSelectionFrames.push({ id, label, nodeIds, createdAt: now, automation })
 			}
 		},
 		removeSavedSelectionFrame(state: WorkflowState, payload: { id: string }) {

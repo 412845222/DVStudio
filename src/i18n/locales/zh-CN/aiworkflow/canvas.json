@@ -1,4 +1,4 @@
-﻿{
+{
 	"aiworkflow.canvas.inputAnchors": "入口锚点",
 	"aiworkflow.canvas.outputAnchors": "出口锚点",
 	"aiworkflow.canvas.inputAnchor": "入口",
@@ -66,5 +66,12 @@
 	"aiworkflow.canvas.ports.referenceImage3": "参考图 3",
 	"aiworkflow.canvas.ports.referenceImage4": "参考图 4",
 	"aiworkflow.canvas.ports.modelOutput": "模型输出",
-	"aiworkflow.canvas.ports.previewImage": "预览图"
+	"aiworkflow.canvas.ports.previewImage": "预览图",
+	"aiworkflow.canvas.automation.toggleOn": "自动化：开",
+	"aiworkflow.canvas.automation.toggleOff": "自动化：关",
+	"aiworkflow.canvas.automation.loop": "循环",
+	"aiworkflow.canvas.automation.setInputs": "设定输入",
+	"aiworkflow.canvas.automation.setOutputs": "设定输出",
+	"aiworkflow.canvas.automation.run": "运行",
+	"aiworkflow.canvas.automation.exit": "退出"
 }

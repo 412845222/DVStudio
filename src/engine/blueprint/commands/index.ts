@@ -13,3 +13,4 @@ export {
 export { SetNodeChatVisibleCommand } from './SetNodeChatVisibleCommand'
 export { UpdateNodeChatDataCommand } from './UpdateNodeChatDataCommand'
 export { UpdateNodeTextCommand } from './UpdateNodeTextCommand'
+export { ConfigureFrameAutomationCommand } from './ConfigureFrameAutomationCommand'

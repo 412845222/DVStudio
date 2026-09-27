@@ -4,6 +4,38 @@ import { readUiWidgets } from '../../../../electron/backend/modules/comfyui/runt
 import { workflowToPrompt } from '../../../../electron/backend/modules/comfyui/workflow-converter.mjs'
 
 describe('ComfyUI widget serialization compatibility', () => {
+	it('skips a non-serialized socketless preview between saved widget values', () => {
+		const schema = {
+			input: {
+				required: { megapixels: ['FLOAT'], multiple: ['INT'] },
+				optional: { preview: ['RESOLUTION_PREVIEW', { socketless: true }] }
+			}
+		}
+		const decoded = readUiWidgets(
+			{
+				type: 'ResolutionSelector',
+				id: 313,
+				inputs: ['megapixels', 'preview', 'multiple'].map((name) => ({ name, widget: { name } })),
+				widgets_values: [0.1, 32]
+			},
+			schema,
+			new Set()
+		)
+		expect(decoded).toEqual({ inputs: { megapixels: 0.1, multiple: 32 }, warnings: [] })
+	})
+	it('still consumes real scalar widgets even when socketless', () => {
+		const decoded = readUiWidgets(
+			{
+				type: 'Custom',
+				id: 1,
+				inputs: [{ name: 'value', widget: { name: 'value' } }],
+				widgets_values: [42]
+			},
+			{ input: { required: { value: ['INT', { socketless: true }] } } },
+			new Set()
+		)
+		expect(decoded).toEqual({ inputs: { value: 42 }, warnings: [] })
+	})
 	const info = {
 		input: {
 			required: {

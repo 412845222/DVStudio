@@ -59,6 +59,9 @@ describe('DeleteSelectionCommand', () => {
 			getBlueprintNode: vi.fn((id: string) => nodes.get(id) ?? null),
 			getConnection: vi.fn((id: string) => connections.get(id) ?? null),
 			getAllConnections: vi.fn(() => Array.from(connections.values())),
+			getSavedSelectionFrames: vi.fn(() => []),
+			pruneFrameAutomationForNode: vi.fn(),
+			restoreFrameAutomationSnapshot: vi.fn(),
 			removeBlueprintNode: vi.fn((id: string) => {
 				nodes.delete(id)
 			}),

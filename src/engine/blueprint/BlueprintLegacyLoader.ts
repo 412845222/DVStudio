@@ -55,7 +55,24 @@ export class BlueprintLegacyLoader {
 
 		if (legacyData.savedSelectionFrames) {
 			for (const frame of legacyData.savedSelectionFrames) {
-				savedSelectionFrames.push({ ...frame })
+				savedSelectionFrames.push({
+					id: frame.id,
+					nodeIds: [...frame.nodeIds],
+					label: frame.label,
+					createdAt: frame.createdAt,
+					automation: frame.automation
+						? {
+								enabled: frame.automation.enabled === true,
+								loopCount: frame.automation.loopCount,
+								inputBindings: Array.isArray(frame.automation.inputBindings)
+									? frame.automation.inputBindings.map((b) => ({ ...b }))
+									: [],
+								outputBindings: Array.isArray(frame.automation.outputBindings)
+									? frame.automation.outputBindings.map((b) => ({ ...b }))
+									: []
+							}
+						: undefined
+				})
 			}
 		}
 

@@ -1,6 +1,7 @@
 import { Command } from '../../graphbase/commands/Command'
 import type { BlueprintScene } from '../BlueprintScene'
 import type { BlueprintNodeData, ConnectionData } from '../types'
+import type { FrameAutomationData } from '../frame-automation/FrameAutomationTypes'
 
 function deepClone<T>(obj: T): T {
 	if (obj === null || typeof obj !== 'object') return obj
@@ -17,6 +18,8 @@ export class DeleteSelectionCommand extends Command {
 	private deletedNodes: BlueprintNodeData[] = []
 	private deletedConnections: ConnectionData[] = []
 	private deletedNodeIds: string[] = []
+	/** 受影响绿框的自动化配置快照（删除成员时剔除绑定，undo 时整份恢复） */
+	private automationSnapshots: Map<string, FrameAutomationData | undefined> = new Map()
 
 	constructor(scene: BlueprintScene, nodeIds: string[], connectionIds: string[]) {
 		super('delete-selection')
@@ -50,6 +53,14 @@ export class DeleteSelectionCommand extends Command {
 				}
 			}
 		}
+
+		// 快照包含待删成员的绿框自动化配置
+		const deletedSet = new Set(this.deletedNodeIds)
+		for (const frame of scene.getSavedSelectionFrames()) {
+			if (frame.nodeIds.some((id) => deletedSet.has(id))) {
+				this.automationSnapshots.set(frame.id, deepClone(frame.automation))
+			}
+		}
 	}
 
 	execute(): void {
@@ -58,6 +69,7 @@ export class DeleteSelectionCommand extends Command {
 		}
 
 		for (const id of this.deletedNodeIds) {
+			this.scene.pruneFrameAutomationForNode(id)
 			this.scene.removeBlueprintNode(id)
 		}
 
@@ -83,6 +95,11 @@ export class DeleteSelectionCommand extends Command {
 				}
 			}
 		}
+
+		// 恢复被剔除的门户绑定（整份快照覆盖）
+		this.scene.restoreFrameAutomationSnapshot(
+			new Map(Array.from(this.automationSnapshots.entries()).map(([k, v]) => [k, deepClone(v)]))
+		)
 
 		this.scene.updateAllConnectionEndpoints()
 		this.scene.requestRedraw()

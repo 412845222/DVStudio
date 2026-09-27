@@ -154,6 +154,7 @@ export function scanHistory(client, base, repo) {
 async function collectHistory(client, base, repo) {
 	const entries = new Map()
 	const seen = new Set()
+	const rejected = new Map()
 	const warnings = []
 	if (!repo) warnings.push('本地历史归档暂不可用；当前仍可读取 ComfyUI 在线历史')
 	let complete = false
@@ -170,18 +171,31 @@ async function collectHistory(client, base, repo) {
 			if (!seen.has(id)) added++
 			seen.add(id)
 			const entry = normalizeHistoryEntry(id, value)
-			if (!entry) continue
+			if (!entry) {
+				const messages = value?.status?.messages || []
+				const reason = messages.some((m) => m?.[0] === 'execution_interrupted')
+					? 'interrupted'
+					: value?.status?.status_str === 'error'
+						? 'failed'
+						: 'not-reusable'
+				rejected.set(id, { promptId: id, reason })
+				continue
+			}
+			rejected.delete(id)
 			if (entries.has(id) && entries.get(id).contentHash !== entry.contentHash) {
 				warnings.push('历史 ID 内容冲突，已保留归档版本：' + id)
 				continue
 			}
-			entries.set(id, entry)
 			try {
-				repo?.save(base, entry)
+				if (!repo) throw new Error('archive unavailable')
+				repo.save(base, entry)
+				entry.archiveState = 'saved'
 			} catch {
+				entry.archiveState = 'failed'
 				if (!warnings.includes('无法留存 ComfyUI 成功快照'))
 					warnings.push('无法留存 ComfyUI 成功快照')
 			}
+			entries.set(id, entry)
 		}
 		return added
 	}
@@ -215,6 +229,7 @@ async function collectHistory(client, base, repo) {
 			(a, b) => b.timestamp - a.timestamp || a.promptId.localeCompare(b.promptId)
 		),
 		complete,
+		rejected: [...rejected.values()].slice(-50),
 		scannedCount: seen.size,
 		warnings,
 		failure

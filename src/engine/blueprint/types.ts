@@ -1,4 +1,4 @@
-﻿export type MediaType =
+export type MediaType =
 	| 'generic'
 	| 'image'
 	| 'video'
@@ -71,6 +71,8 @@ export interface BlueprintNodeData {
 }
 
 export interface ConnectionData {
+	fromFrame?: { frameId: string; portId: string }
+	toFrame?: { frameId: string; portId: string }
 	id: string
 	fromNodeId: string
 	fromAnchorId: string
@@ -151,6 +153,8 @@ export interface SavedSelectionFrameData {
 	nodeIds: string[]
 	label: string
 	createdAt?: number
+	/** 自动化流程配置（可选增量字段，不升 schema 版本） */
+	automation?: import('./frame-automation/FrameAutomationTypes').FrameAutomationData
 }
 
 export const PORT_SIZE = 24

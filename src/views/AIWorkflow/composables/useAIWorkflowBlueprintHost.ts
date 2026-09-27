@@ -125,6 +125,22 @@ function createHostComposable() {
 		return hostRef.value?.getSavedSelectionFrames?.() ?? []
 	}
 
+	function configureFrameAutomation(frameId: string, patch: Record<string, any>): boolean {
+		return hostRef.value?.configureFrameAutomation?.(frameId, patch) ?? false
+	}
+
+	function getFrameAutomation(frameId: string): any {
+		return hostRef.value?.getFrameAutomation?.(frameId) ?? undefined
+	}
+
+	function setFrameAutomationRunState(frameId: string, state: Record<string, any> | null): void {
+		hostRef.value?.setFrameAutomationRunState?.(frameId, state)
+	}
+
+	function isFrameAutomationInteracting(): boolean {
+		return !!(hostRef.value as any)?.isFrameAutomationInteracting?.()
+	}
+
 	function onHostReady(_editor: any) {}
 
 	function onViewportChange(zoom: number, panX: number, panY: number) {
@@ -166,6 +182,10 @@ function createHostComposable() {
 		saveSelectionFrame,
 		deleteSavedSelectionFrame,
 		getSavedSelectionFrames,
+		configureFrameAutomation,
+		getFrameAutomation,
+		setFrameAutomationRunState,
+		isFrameAutomationInteracting,
 		onHostReady,
 		onViewportChange,
 		bindHostEvents,

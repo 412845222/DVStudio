@@ -4,6 +4,43 @@ export function bindingKey(mapping) {
 	return `${mapping.nodeId}:${mapping.inputKey}`
 }
 
+export function refineMediaMappings(graph, info, schema) {
+	if (!schema || !Object.keys(schema).length) return info
+	const fields = { image: new Map(), video: new Map() }
+	for (const [nodeId, node] of Object.entries(graph)) {
+		const definition = schema[node.class_type]
+		const inputs = { ...definition?.input?.required, ...definition?.input?.optional }
+		for (const [inputKey, value] of Object.entries(node.inputs)) {
+			if (typeof value !== 'string') continue
+			const config = inputs[inputKey]?.[1]
+			const kind = config?.image_upload ? 'image' : config?.video_upload ? 'video' : null
+			if (kind)
+				fields[kind].set(`${nodeId}:${inputKey}`, {
+					nodeId,
+					classType: node.class_type,
+					inputKey,
+					originalValue: value
+				})
+		}
+	}
+	for (const [kind, legacy] of [
+		['image', info.images],
+		['video', info.videos]
+	]) {
+		for (const field of legacy || []) {
+			// Known loader adapters remain useful for extensions without upload metadata.
+			// File-looking strings in arbitrary nodes (e.g. an output filename) are not inputs.
+			const loader =
+				kind === 'image'
+					? /Load.*Image|Image.*Load|ImageLoader/i
+					: /Load.*Video|Video.*Load|VideoLoader/i
+			if (loader.test(field.classType) && !schema[field.classType]?.output_node)
+				fields[kind].set(bindingKey(field), field)
+		}
+	}
+	return { ...info, images: [...fields.image.values()], videos: [...fields.video.values()] }
+}
+
 // Classify individual fields and follow STRING/conditioning connections. Text contents
 // are user data; words such as "negative" in a positive prompt do not define its role.
 export function refineTextMappings(graph, info) {
