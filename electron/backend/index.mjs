@@ -1,3 +1,4 @@
+import { routes as frameAutomationRoutes } from './modules/frame-automation/routes.mjs'
 import { createRouter } from './router.mjs'
 import { createContext } from './context.mjs'
 import logger from './core/logger.mjs'
@@ -94,6 +95,7 @@ export function initBackend(mainWindow, deps = {}) {
 		...chatRoutes,
 		...exportRoutes,
 		...comfyuiRoutes,
+		...frameAutomationRoutes,
 		...deepseekHarnessRoutes,
 		...thirdPartyRoutes,
 		...agentSkillsRoutes,

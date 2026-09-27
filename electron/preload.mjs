@@ -952,6 +952,12 @@ contextBridge.exposeInMainWorld('dweb', {
 			onConfigChange: (listener) => onHarnessEvent('config-changed', listener)
 		}
 	},
+	frameAutomation: Object.fromEntries(
+		['create', 'append', 'list', 'get', 'reconcile', 'validateAssets'].map((action) => [
+			action,
+			(payload) => invoke(`dweb:frame-automation:${action}`, payload || {})
+		])
+	),
 	comfyui: {
 		// 本地工作流模板 CRUD（操作 LocalDB comfyui_workflows 表）
 		workflows: {
@@ -961,6 +967,7 @@ contextBridge.exposeInMainWorld('dweb', {
 			delete: (payload) => invoke('dweb:comfyui:workflows:delete', payload || {})
 		},
 		runtime: {
+			recovery: (payload) => invoke('dweb:comfyui:runtime:recovery', payload || {}),
 			ping: (payload) => invoke('dweb:comfyui:runtime:ping', payload || {}),
 			objectInfo: (payload) => invoke('dweb:comfyui:runtime:object_info', payload || {}),
 			workflows: {

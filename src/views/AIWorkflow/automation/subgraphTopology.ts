@@ -24,7 +24,6 @@ export function buildSubgraphPlan(memberIds: string[], edges: SubgraphEdge[]): F
 	const seen = new Set<string>()
 	for (const e of edges) {
 		if (!memberSet.has(e.fromNodeId) || !memberSet.has(e.toNodeId)) continue
-		if (e.fromNodeId === e.toNodeId) continue
 		const key = `${e.fromNodeId}=>${e.toNodeId}`
 		if (seen.has(key)) continue
 		seen.add(key)

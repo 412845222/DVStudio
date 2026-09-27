@@ -1,4 +1,5 @@
 import { Rect } from '../../graphbase/core/Rect'
+import { PORT_HIT_RADIUS } from '../types'
 import { SELECTION_FRAME_CONSTANTS } from '../SelectionFrame'
 import {
 	AUTOMATION_BAR_HEIGHT,
@@ -14,13 +15,23 @@ import {
  * 注意：与既有 computeSelectionBounds 的约定一致，bounds 存原始 world 增量（zoom=1 视觉），
  * 实际绘制与命中时再按 cameraZoom 换算（见下方 *WorldRect(..., zoom) 系列函数）。
  */
-export function computeAutomationOuterRect(baseRect: Rect, enabled: boolean): Rect {
+export function computeAutomationOuterRect(
+	baseRect: Rect,
+	enabled: boolean,
+	zoom = 1,
+	portCount = 0
+): Rect {
 	if (!enabled) return baseRect
+	const z = Math.max(0.2, zoom)
+	const side = PORT_HIT_RADIUS + 56 / z
+	const header = (SELECTION_FRAME_CONSTANTS.TAG_BAR_HEIGHT + AUTOMATION_BAR_HEIGHT) / z
+	const memberTop = baseRect.y + SELECTION_FRAME_CONSTANTS.TAG_BAR_HEIGHT
+	const memberHeight = baseRect.height - SELECTION_FRAME_CONSTANTS.TAG_BAR_HEIGHT
 	return new Rect(
-		baseRect.x,
-		baseRect.y - AUTOMATION_BAR_HEIGHT,
-		baseRect.width,
-		baseRect.height + AUTOMATION_BAR_HEIGHT
+		baseRect.x - side,
+		memberTop - header,
+		Math.max(baseRect.width + side * 2, 580 / z),
+		Math.max(memberHeight, (Math.max(0, portCount - 1) * 52 + 48) / z) + header
 	)
 }
 
@@ -70,7 +81,7 @@ export function layoutPortalAnchors(
 	const minY = bodyRect.y + half
 	const maxY = bodyRect.y + bodyRect.height - half
 	const x = direction === 'in' ? bodyRect.x : bodyRect.x + bodyRect.width
-	const gap = PORTAL_MIN_GAP * invZ
+	const gap = Math.max(PORTAL_MIN_GAP, 52) * invZ
 
 	let placed: { binding: FrameIoBinding; y: number }[] = []
 	let fallbackCursor = minY

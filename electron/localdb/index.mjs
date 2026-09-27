@@ -1,3 +1,4 @@
+import { createFrameAutomationRunsRepo } from './repos/frameAutomationRuns.mjs'
 import {
 	closeLocalDb,
 	getLocalDb,
@@ -18,6 +19,7 @@ import { createExportJobsRepo } from './repos/exportJobs.mjs'
 import { createEditorComponentsRepo } from './repos/editorComponents.mjs'
 import { createComfyuiWorkflowsRepo } from './repos/comfyuiWorkflows.mjs'
 import { createComfyuiHistorySnapshotsRepo } from './repos/comfyuiHistorySnapshots.mjs'
+import { createComfyuiProfilesRepo } from './repos/comfyuiProfiles.mjs'
 import { createComfyuiJobsRepo } from './repos/comfyuiJobs.mjs'
 import { createRefImageCacheRepo } from './repos/refImageCache.mjs'
 import { createAiworkflowTemplatesRepo } from './repos/aiworkflowTemplates.mjs'
@@ -65,6 +67,8 @@ function tryInitOnce(dbFilePath, baseDir, appSecret, tag) {
 		const chatConversations = createChatConversationsRepo()
 		const exportJobs = createExportJobsRepo({ backendDataDir: baseDir })
 		const editorComponents = createEditorComponentsRepo({ backendDataDir: baseDir })
+		const frameAutomationRuns = createFrameAutomationRunsRepo()
+		frameAutomationRuns.recoverInterrupted()
 		const comfyuiWorkflows = createComfyuiWorkflowsRepo()
 		const comfyuiJobs = createComfyuiJobsRepo()
 		const refImageCache = createRefImageCacheRepo()
@@ -88,7 +92,9 @@ function tryInitOnce(dbFilePath, baseDir, appSecret, tag) {
 			exportJobs,
 			editorComponents,
 			comfyuiWorkflows,
+			frameAutomationRuns,
 			comfyuiHistorySnapshots: createComfyuiHistorySnapshotsRepo(),
+			comfyuiProfiles: createComfyuiProfilesRepo(),
 			comfyuiJobs,
 			refImageCache,
 			aiworkflowTemplates,

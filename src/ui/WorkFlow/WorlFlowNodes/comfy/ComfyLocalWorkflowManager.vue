@@ -8,6 +8,27 @@
 				</div>
 
 				<div class="clwm-toolbar">
+					<button
+						class="clwm-btn"
+						:disabled="loading || !baseUrl"
+						@click.stop="onRecovery('export')"
+					>
+						{{ t('nodes.comfyui.exportRecovery') }}
+					</button>
+					<button
+						class="clwm-btn"
+						:disabled="loading || !baseUrl"
+						@click.stop="onRecovery('import')"
+					>
+						{{ t('nodes.comfyui.importRecovery') }}
+					</button>
+					<button
+						class="clwm-btn"
+						:disabled="loading || !baseUrl"
+						@click.stop="onRecovery('legacy')"
+					>
+						{{ t('nodes.comfyui.importLegacy') }}
+					</button>
 					<button class="clwm-btn" type="button" :disabled="loading" @click.stop="onImportClick">
 						{{ t('nodes.comfyui.importFromFile') }}
 					</button>
@@ -128,6 +149,7 @@ type ManagerItem = {
 
 const props = defineProps<{
 	visible: boolean
+	baseUrl?: string
 	comfyService: ComfyUIBridgeService
 	// 可选：当前 ComfyUI 节点选中的工作流数据，用于「另存为本地模板」
 	currentWorkflowData?: unknown
@@ -195,6 +217,24 @@ function onClose() {
 
 function onImportClick() {
 	fileInputRef.value?.click()
+}
+
+async function onRecovery(action: 'export' | 'import' | 'legacy') {
+	if (!props.baseUrl) return
+	loading.value = true
+	try {
+		const result = await props.comfyService.manageRecovery(props.baseUrl, action)
+		if (result.cancelled) return
+		setStatus(String(result.message || result.error || ''), result.ok ? 'info' : 'error')
+		if (result.ok && action !== 'export') {
+			await refresh()
+			emit('changed')
+		}
+	} catch (err: unknown) {
+		setStatus(err instanceof Error ? err.message : String(err), 'error')
+	} finally {
+		loading.value = false
+	}
 }
 
 async function onFileSelected(e: Event) {

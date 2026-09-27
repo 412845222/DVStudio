@@ -27,6 +27,7 @@ export const routes = [
 	{ channel: 'dweb:comfyui:runtime:cancel', handler: handlers.runtimeCancelRun },
 	{ channel: 'dweb:comfyui:runtime:job', handler: handlers.runtimeGetJobStatus },
 	{ channel: 'dweb:comfyui:runtime:clear-cache', handler: handlers.runtimeClearHistoryCache },
+	{ channel: 'dweb:comfyui:runtime:recovery', handler: handlers.runtimeRecovery },
 	// Setup routes
 	{ channel: 'dweb:comfyui:setup:default-path', handler: handlers.setupGetDefaultInstallPath },
 	{ channel: 'dweb:comfyui:setup:select-path', handler: handlers.setupSelectPath },

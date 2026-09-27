@@ -72,3 +72,30 @@ describe('ComfyUI text role refinement', () => {
 		)
 	})
 })
+
+it('replaces a PrimitiveStringMultiline value with external text while preserving sockets and negative defaults', () => {
+	const graph = {
+		'312': { class_type: 'PrimitiveStringMultiline', inputs: { value: 'template prompt' } },
+		n: { class_type: 'Text', inputs: { text: 'negative default' } },
+		generate: { class_type: 'Video', inputs: { prompt: ['312', 0] } }
+	}
+	const mappings = {
+		textNodes: {
+			positive: [
+				{
+					nodeId: '312',
+					classType: 'PrimitiveStringMultiline',
+					inputKey: 'value',
+					allTextKeys: ['value']
+				}
+			],
+			negative: [{ nodeId: 'n', inputKey: 'text' }]
+		}
+	}
+	bindText(graph, mappings, { positivePrompt: 'external prompt' })
+	expect(graph['312'].inputs.value).toBe('external prompt')
+	expect(graph.generate.inputs.prompt).toEqual(['312', 0])
+	expect(graph.n.inputs.text).toBe('negative default')
+	bindText(graph, mappings, { positivePrompt: '' })
+	expect(graph['312'].inputs.value).toBe('')
+})

@@ -69,6 +69,27 @@ function findViolations(
 }
 
 describe('🔴 Blueprint Architecture Compliance Tests', () => {
+	it('keeps frame geometry independent from task execution and IPC', () => {
+		const files = blueprintEngineFiles.filter((f) => f.relativePath.includes('/frame-automation/'))
+		expect(files.length).toBeGreaterThan(0)
+		expect(
+			findViolations(files, [
+				/from\s+['"][^'"]*(?:views\/|store\/|network\/|electronBridge\/|node:)/,
+				/window\.dweb|\bfetch\s*\(|\bipcRenderer\b/
+			])
+		).toEqual([])
+	})
+	it('keeps automation execution in the host behind the Electron bridge', () => {
+		const files = blueprintHostFiles.filter((f) => f.relativePath.includes('/automation/'))
+		expect(files.length).toBeGreaterThan(0)
+		expect(
+			findViolations(files, [
+				/from\s+['"](?:node:|fs['"]|better-sqlite3)/,
+				/window\.dweb|\bfetch\s*\(|\bipcRenderer\b/,
+				/\.transform\.position\s*(?:\.[xy])?\s*=/
+			])
+		).toEqual([])
+	})
 	describe('Rule 1: No direct transform.position assignment in blueprint layer', () => {
 		it('should not directly assign to node.transform.position.x/y in blueprint engine files (outside GraphObject base class)', () => {
 			const patterns = [

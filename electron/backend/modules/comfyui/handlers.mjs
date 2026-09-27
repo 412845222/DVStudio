@@ -1,5 +1,10 @@
 import * as service from './service.mjs'
 import * as setup from './setup-service.mjs'
+import { manageRecovery } from './recovery/service.mjs'
+
+export async function runtimeRecovery(ctx, payload) {
+	return manageRecovery(ctx, payload)
+}
 
 export async function listWorkflows(ctx, payload) {
 	return service.listWorkflows(ctx, payload)

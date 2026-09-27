@@ -298,7 +298,19 @@ export class BlueprintScene extends Scene {
 					`${n.id}=${Math.round(n.worldX)},${Math.round(n.worldY)},${Math.round(n.width)},${Math.round(n.height)},${n.sizeCustomized ? 1 : 0},${portSpecsSignature(n.inputs)},${portSpecsSignature(n.outputs)}`
 			)
 			.join('|')
-		const signature = `${blueprintData.nodes.length}:${blueprintData.edges.length}:${positionSignature}`
+		const frameSignature = JSON.stringify(blueprintData.savedSelectionFrames)
+		const edgeSignature = JSON.stringify(
+			blueprintData.edges.map((e) => [
+				e.id,
+				e.fromNodeId,
+				e.fromAnchorId,
+				e.toNodeId,
+				e.toAnchorId,
+				e.fromFrame,
+				e.toFrame
+			])
+		)
+		const signature = `${blueprintData.nodes.length}:${blueprintData.edges.length}:${positionSignature}:${frameSignature}:${edgeSignature}`
 		if (this._lastLoadSignature === signature) {
 			return
 		}
@@ -391,11 +403,15 @@ export class BlueprintScene extends Scene {
 				const existing = this._connectionMap.get(edgeData.id)
 				if (existing) {
 					const changed =
+						JSON.stringify(existing.data.fromFrame) !== JSON.stringify(edgeData.fromFrame) ||
+						JSON.stringify(existing.data.toFrame) !== JSON.stringify(edgeData.toFrame) ||
 						existing.data.fromNodeId !== edgeData.fromNodeId ||
 						existing.data.toNodeId !== edgeData.toNodeId ||
 						existing.data.fromAnchorId !== edgeData.fromAnchorId ||
 						existing.data.toAnchorId !== edgeData.toAnchorId
 					if (changed) {
+						existing.data.fromFrame = edgeData.fromFrame
+						existing.data.toFrame = edgeData.toFrame
 						existing.data.fromNodeId = edgeData.fromNodeId
 						existing.data.toNodeId = edgeData.toNodeId
 						existing.data.fromAnchorId = edgeData.fromAnchorId
@@ -426,6 +442,7 @@ export class BlueprintScene extends Scene {
 			}
 		}
 
+		this.refreshFrameConnections()
 		this.updateAllConnectionEndpoints()
 		this.requestRedraw()
 	}
@@ -560,6 +577,8 @@ export class BlueprintScene extends Scene {
 			}
 			edges.push({
 				id: raw.id,
+				fromFrame: raw.fromFrame ? { ...raw.fromFrame } : undefined,
+				toFrame: raw.toFrame ? { ...raw.toFrame } : undefined,
 				fromNodeId,
 				fromAnchorId: typeof fromAnchorId === 'string' ? fromAnchorId : String(fromAnchorId ?? ''),
 				toNodeId,
@@ -948,7 +967,56 @@ export class BlueprintScene extends Scene {
 	setFrameAutomationInternal(frameId: string, config: FrameAutomationData | undefined): void {
 		const frame = this._savedSelectionFrames.get(frameId)
 		if (!frame) return
+		for (const connection of this._connectionMap.values()) {
+			if (
+				connection.data.fromFrame?.frameId === frameId &&
+				!config?.outputBindings.some((b) => b.id === connection.data.fromFrame?.portId)
+			)
+				delete connection.data.fromFrame
+			if (
+				connection.data.toFrame?.frameId === frameId &&
+				!config?.inputBindings.some((b) => b.id === connection.data.toFrame?.portId)
+			)
+				delete connection.data.toFrame
+		}
 		frame.automation = config
+		this.refreshFrameConnections()
+	}
+
+	/** Concrete edge fields are compatibility projections of the stable frame endpoint. */
+	refreshFrameConnections(): void {
+		for (const connection of this._connectionMap.values()) {
+			for (const side of ['from', 'to'] as const) {
+				const ref = side === 'from' ? connection.data.fromFrame : connection.data.toFrame
+				if (!ref) continue
+				const resolved = this.resolveFramePortal(
+					ref.frameId,
+					side === 'from' ? 'out' : 'in',
+					ref.portId
+				)
+				if (!resolved) continue
+				if (side === 'from') {
+					connection.data.fromNodeId = resolved.node.id
+					connection.data.fromAnchorId = resolved.port.spec.id
+				} else {
+					connection.data.toNodeId = resolved.node.id
+					connection.data.toAnchorId = resolved.port.spec.id
+				}
+			}
+		}
+		for (const node of this._nodeMap.values())
+			for (const port of [...node.inputPorts, ...node.outputPorts]) port.connected = false
+		for (const connection of this._connectionMap.values()) {
+			const output = this._nodeMap
+				.get(connection.data.fromNodeId)
+				?.getOutputPort(connection.data.fromAnchorId)
+			const input = this._nodeMap
+				.get(connection.data.toNodeId)
+				?.getInputPort(connection.data.toAnchorId)
+			if (output) output.connected = true
+			if (input) input.connected = true
+		}
+		this.markConnectionEndpointsDirty()
 	}
 
 	/** 读取框的自动化配置（未配置返回 undefined） */
@@ -969,6 +1037,17 @@ export class BlueprintScene extends Scene {
 	): boolean {
 		const frame = this._savedSelectionFrames.get(frameId)
 		if (!frame) return false
+		if (this.getFrameAutomationRunState(frameId)?.status === 'running') return false
+		if (
+			patch.enabled === true &&
+			[...this._savedSelectionFrames.values()].some(
+				(f) =>
+					f.id !== frameId &&
+					f.automation?.enabled &&
+					f.nodeIds.some((id) => frame.nodeIds.includes(id))
+			)
+		)
+			return false
 		const prev = frame.automation
 		const base: FrameAutomationData = prev
 			? {
@@ -1002,7 +1081,44 @@ export class BlueprintScene extends Scene {
 		base.inputBindings = validate(base.inputBindings, 'in')
 		base.outputBindings = validate(base.outputBindings, 'out')
 
+		for (const c of this._connectionMap.values()) {
+			const from =
+				c.data.fromFrame?.frameId === frameId
+					? base.outputBindings.find((b) => b.id === c.data.fromFrame?.portId)
+					: undefined
+			const to =
+				c.data.toFrame?.frameId === frameId
+					? base.inputBindings.find((b) => b.id === c.data.toFrame?.portId)
+					: undefined
+			const out = this._nodeMap
+				.get(from?.nodeId || c.data.fromNodeId)
+				?.getOutputPort(from?.anchorId || c.data.fromAnchorId)
+			const input = this._nodeMap
+				.get(to?.nodeId || c.data.toNodeId)
+				?.getInputPort(to?.anchorId || c.data.toAnchorId)
+			if ((from || to) && (!out || !input || !this.isPortCompatible(out, input))) return false
+		}
 		this.executeCommand(new ConfigureFrameAutomationCommand(this, frameId, base, prev))
+		return true
+	}
+
+	/** New cross-boundary gestures must use the exposed frame port; internal wiring stays editable. */
+	isFrameBoundaryConnectionAllowed(data: ConnectionData): boolean {
+		for (const frame of this._savedSelectionFrames.values()) {
+			if (!frame.automation?.enabled) continue
+			const fromInside = frame.nodeIds.includes(data.fromNodeId),
+				toInside = frame.nodeIds.includes(data.toNodeId)
+			if (fromInside === toInside) continue
+			const binding = (
+				fromInside ? frame.automation.outputBindings : frame.automation.inputBindings
+			).find(
+				(b) =>
+					b.nodeId === (fromInside ? data.fromNodeId : data.toNodeId) &&
+					b.anchorId === (fromInside ? data.fromAnchorId : data.toAnchorId)
+			)
+			const ref = fromInside ? data.fromFrame : data.toFrame
+			if (binding && (ref?.frameId !== frame.id || ref?.portId !== binding.id)) return false
+		}
 		return true
 	}
 
@@ -1039,7 +1155,7 @@ export class BlueprintScene extends Scene {
 			direction === 'in'
 				? frame.automation.inputBindings.find((b) => b.id === bindingId)
 				: frame.automation.outputBindings.find((b) => b.id === bindingId)
-		if (!binding) return null
+		if (!binding || !frame.nodeIds.includes(binding.nodeId)) return null
 		const node = this._nodeMap.get(binding.nodeId)
 		if (!node) return null
 		const port =
@@ -1055,16 +1171,24 @@ export class BlueprintScene extends Scene {
 	 */
 	findFrameBindingForAnchor(
 		nodeId: string,
-		anchorId: string
+		anchorId: string,
+		reference?: { frameId: string; portId: string }
 	): { frameId: string; direction: PortalDirection; bindingId: string } | null {
 		for (const frame of this._savedSelectionFrames.values()) {
+			if (reference && frame.id !== reference.frameId) continue
 			if (!frame.automation?.enabled) continue
 			const inHit = frame.automation.inputBindings.find(
-				(b) => b.nodeId === nodeId && b.anchorId === anchorId
+				(b) =>
+					b.nodeId === nodeId &&
+					b.anchorId === anchorId &&
+					(!reference || b.id === reference.portId)
 			)
 			if (inHit) return { frameId: frame.id, direction: 'in', bindingId: inHit.id }
 			const outHit = frame.automation.outputBindings.find(
-				(b) => b.nodeId === nodeId && b.anchorId === anchorId
+				(b) =>
+					b.nodeId === nodeId &&
+					b.anchorId === anchorId &&
+					(!reference || b.id === reference.portId)
 			)
 			if (outHit) return { frameId: frame.id, direction: 'out', bindingId: outHit.id }
 		}
@@ -1075,15 +1199,24 @@ export class BlueprintScene extends Scene {
 	 * 若某内部锚点被 enabled 框绑定为门户，返回门户在框边线上的世界坐标（渲染期端点吸附用）。
 	 * 纯派生计算，不改变任何状态。
 	 */
-	getPortalWorldPositionForAnchor(nodeId: string, anchorId: string): Vector2 | null {
-		const hit = this.findFrameBindingForAnchor(nodeId, anchorId)
+	getPortalWorldPositionForAnchor(
+		nodeId: string,
+		anchorId: string,
+		reference?: { frameId: string; portId: string }
+	): Vector2 | null {
+		const hit = this.findFrameBindingForAnchor(nodeId, anchorId, reference)
 		if (!hit) return null
 		const frame = this.getSavedSelectionFrame(hit.frameId)
 		if (!frame?.automation?.enabled) return null
 		const nodes = this.getNodesByIds(frame.nodeIds)
 		const base = computeSelectionBounds(nodes)
 		if (!base) return null
-		const outer = computeAutomationOuterRect(base, true)
+		const outer = computeAutomationOuterRect(
+			base,
+			true,
+			this.camera.zoom,
+			Math.max(frame.automation.inputBindings.length, frame.automation.outputBindings.length)
+		)
 		const bodyRect = getFrameBodyWorldRect(outer, true, this.camera.zoom)
 		const bindings =
 			hit.direction === 'in' ? frame.automation.inputBindings : frame.automation.outputBindings
@@ -1104,7 +1237,7 @@ export class BlueprintScene extends Scene {
 	/** 删除成员节点时剔除失效绑定（DeleteSelectionCommand 对称快照/恢复，loadBlueprint 重建也安全） */
 	pruneFrameAutomationForNode(removedNodeId: string): void {
 		for (const frame of this._savedSelectionFrames.values()) {
-			if (!frame.automation?.enabled) continue
+			if (!frame.automation) continue
 			const next = pruneBindingsForNode(frame.automation, removedNodeId)
 			if (next !== frame.automation) frame.automation = next
 		}
@@ -1115,10 +1248,29 @@ export class BlueprintScene extends Scene {
 		for (const [frameId, config] of snapshots) {
 			const frame = this._savedSelectionFrames.get(frameId)
 			if (frame) frame.automation = config
+			this.refreshFrameConnections()
 		}
 	}
 
+	getFrameConnectionSnapshot(frameId: string): ConnectionData[] {
+		return [...this._connectionMap.values()]
+			.filter((c) => c.data.fromFrame?.frameId === frameId || c.data.toFrame?.frameId === frameId)
+			.map((c) => JSON.parse(JSON.stringify(c.data)))
+	}
+	restoreFrameConnectionSnapshot(snapshot: ConnectionData[]): void {
+		for (const data of snapshot) {
+			const connection = this._connectionMap.get(data.id)
+			if (connection) Object.assign(connection.data, JSON.parse(JSON.stringify(data)))
+		}
+		this.refreshFrameConnections()
+	}
 	removeSelectionFrameInternal(frameId: string): boolean {
+		this.refreshFrameConnections()
+		for (const connection of this._connectionMap.values()) {
+			if (connection.data.fromFrame?.frameId === frameId) delete connection.data.fromFrame
+			if (connection.data.toFrame?.frameId === frameId) delete connection.data.toFrame
+		}
+		this.markConnectionEndpointsDirty()
 		return this._savedSelectionFrames.delete(frameId)
 	}
 
@@ -1151,6 +1303,7 @@ export class BlueprintScene extends Scene {
 	}
 
 	deleteSavedSelectionFrame(frameId: string): boolean {
+		if (this.getFrameAutomationRunState(frameId)?.status === 'running') return false
 		const existing = this._savedSelectionFrames.get(frameId)
 		if (!existing) return false
 		this.executeCommand(new DeleteSelectionFrameCommand(this, frameId))
@@ -1462,24 +1615,35 @@ export class BlueprintScene extends Scene {
 				let toWorld = toPort.getWorldPosition()
 				const fromBinding = this.findFrameBindingForAnchor(
 					conn.data.fromNodeId,
-					conn.data.fromAnchorId
+					conn.data.fromAnchorId,
+					conn.data.fromFrame
 				)
 				if (
 					fromBinding &&
 					!this.getSavedSelectionFrame(fromBinding.frameId)?.nodeIds.includes(conn.data.toNodeId)
 				) {
 					fromWorld =
-						this.getPortalWorldPositionForAnchor(conn.data.fromNodeId, conn.data.fromAnchorId) ??
-						fromWorld
+						this.getPortalWorldPositionForAnchor(
+							conn.data.fromNodeId,
+							conn.data.fromAnchorId,
+							conn.data.fromFrame
+						) ?? fromWorld
 				}
-				const toBinding = this.findFrameBindingForAnchor(conn.data.toNodeId, conn.data.toAnchorId)
+				const toBinding = this.findFrameBindingForAnchor(
+					conn.data.toNodeId,
+					conn.data.toAnchorId,
+					conn.data.toFrame
+				)
 				if (
 					toBinding &&
 					!this.getSavedSelectionFrame(toBinding.frameId)?.nodeIds.includes(conn.data.fromNodeId)
 				) {
 					toWorld =
-						this.getPortalWorldPositionForAnchor(conn.data.toNodeId, conn.data.toAnchorId) ??
-						toWorld
+						this.getPortalWorldPositionForAnchor(
+							conn.data.toNodeId,
+							conn.data.toAnchorId,
+							conn.data.toFrame
+						) ?? toWorld
 				}
 				conn.setEndpoints({
 					fromWorld,

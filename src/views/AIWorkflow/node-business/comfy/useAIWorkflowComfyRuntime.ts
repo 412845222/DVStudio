@@ -1,3 +1,4 @@
+import { collectComfyPromptInputs, comfyPromptOverride } from './comfyPromptInputs'
 import type { ComfyTemplateResolution } from '../../../../aiworkflow/types'
 import { ref } from 'vue'
 import type { ComfyBridgeMedia, ComfyLocalizedOutput } from './comfyOutputResolver'
@@ -17,7 +18,7 @@ type RunState = {
 
 type ComfyInputFile = File | { file: File; mediaType: 'image' | 'video'; bindingId?: string }
 
-type ComfyService = {
+export type ComfyService = {
 	run: (
 		baseUrl: string,
 		workflowPath: string,
@@ -30,6 +31,11 @@ type ComfyService = {
 			snapshotId?: string
 			contentHash?: string
 			workflowHash?: string
+			semanticHash?: string
+			nodeSchemaHash?: string
+			seedPolicy?: 'preserve' | 'randomize'
+			confirmRetry?: boolean
+			submissionScope?: string
 		}
 	) => Promise<
 		| {
@@ -95,6 +101,8 @@ type _InputAnchor = { id?: string; [key: string]: unknown }
 type JobStatus = { status?: string; outputs_count?: number; [key: string]: unknown }
 
 export const useAIWorkflowComfyRuntime = (payload: {
+	/** Automation owns polling and persistence; reuse only the normal input/submission path. */
+	submissionOnly?: boolean
 	ensureComfyTemplate?: (nodeId: string) => Promise<boolean>
 	store: {
 		state: {
@@ -297,6 +305,11 @@ export const useAIWorkflowComfyRuntime = (payload: {
 						const or = await payload.comfyService.outputs(baseUrl, promptId)
 						if (!isCurrent()) return
 						if (or.ok) {
+							if (next.runStatus === 'completed' && Array.isArray(or.warnings)) {
+								terminalAlerts.push(
+									...or.warnings.filter((w): w is string => typeof w === 'string')
+								)
+							}
 							const media = Array.isArray(or.media) ? or.media : []
 							if (typeof console !== 'undefined') {
 								console.log('%c[ComfyUI][Poll] 📥 outputs 返回 media 明细：', 'color:#0369a1', {
@@ -374,7 +387,9 @@ export const useAIWorkflowComfyRuntime = (payload: {
 							}
 
 							if (next.runStatus === 'completed') {
-								terminalAlerts = Array.isArray(dispatchRes?.alerts) ? dispatchRes.alerts : []
+								terminalAlerts.push(
+									...(Array.isArray(dispatchRes?.alerts) ? dispatchRes.alerts : [])
+								)
 							}
 						}
 					} catch {
@@ -615,208 +630,18 @@ export const useAIWorkflowComfyRuntime = (payload: {
 		return result
 	}
 
-	interface CollectedTexts {
-		positive: string[]
-		negative: string[]
-		inOrder: Array<{ value: string; classified: 'positive' | 'negative' }>
-		/** 当前 comfyui 节点声明了多少个 mediaType==='text' 的输入锚点（设计上只允许接收文本节点） */
-		textAnchorsSeen: number
-		/** 其中实际上游有连接且解析出非空文本的数量 */
-		textAnchorsFilled: number
-	}
-	const collectComfyInputText = (nodeId: string): string => {
-		const texts = collectComfyInputTexts(nodeId)
-		return texts.positive.join('\n\n')
-	}
-	const collectComfyInputTexts = (nodeId: string): CollectedTexts => {
-		const nodeRecord = payload.store.state.nodesById[nodeId]
-		const node = nodeRecord as ComfyNode | undefined
-		const result: CollectedTexts = {
-			positive: [],
-			negative: [],
-			inOrder: [],
-			textAnchorsSeen: 0,
-			textAnchorsFilled: 0
-		}
-
-		const anchors = Array.isArray(node?.inputs)
-			? (node!.inputs as Array<Record<string, unknown>>)
-			: []
-		if (!anchors.length) return result
-
-		const NEGATIVE_ANCHOR_RE = /negative|neg_prompt|negprompt|反向|负面|负向/i
-
-		// 从 state 中预取全部入边（toNodeId === nodeId），用于聚合锚点的逐条边解析
-		const incomingEdges = payload.store.state.edgeOrder
-			.map((eid) => payload.store.state.edgesById[eid] as ComfyEdge | undefined)
-			.filter((e): e is ComfyEdge => Boolean(e && e.toNodeId === nodeId && e.fromNodeId))
-
-		if (typeof console !== 'undefined') {
-			console.log(
-				`%c[ComfyUI][CollectTexts] STEP-A 初始化: nodeId=${nodeId}, nodeType=${node?.type ?? 'unknown'}, ` +
-					`anchors=${anchors.length}, incomingEdges=${incomingEdges.length}, ` +
-					`getTextOutputForNode=${typeof payload.getTextOutputForNode === 'function'}, ` +
-					`getIncomingTextValue=${typeof payload.getIncomingTextValue === 'function'}`,
-				'color:#b45309;font-weight:bold'
-			)
-			for (const a of anchors) {
-				const mediaType = String((a as any)?.mediaType ?? '').toLowerCase()
-				const accepted = Array.isArray((a as any)?.acceptedMediaTypes)
-					? ((a as any).acceptedMediaTypes as unknown[]).map((v) => String(v ?? ''))
-					: []
-				console.log(
-					`[ComfyUI][CollectTexts]   锚点: id=${(a as any).id}, mediaType=${mediaType}, ` +
-						`acceptedMediaTypes=[${accepted.join(',')}], multiInput=${Boolean((a as any)?.multiInput)}`
-				)
-			}
-			for (const e of incomingEdges) {
-				const fromNode = payload.store.state.nodesById[String(e.fromNodeId ?? '')] as unknown as
-					| Record<string, unknown>
-					| undefined
-				console.log(
-					`[ComfyUI][CollectTexts]   入边: ${String(e.fromNodeId ?? '')}[type=${String(
-						fromNode?.type ?? '?'
-					)}]::${String(e.fromAnchorId ?? '')}  →  ${String(e.toAnchorId ?? '')}`
-				)
-			}
-		}
-
-		// 官方文本解析器：优先走 payload.getTextOutputForNode（完整解析器，支持 text-merge /
-		// scene-understanding 等高级节点），不可用时按节点类型关键字段兜底（仅支持常见
-		// 类型；但此时至少能拿到 text / rotate-image 节点的直接文本，不会完全跳过）。
-		const resolveUpstreamText = (fromNodeId: string, fromAnchorId?: string): string => {
-			if (typeof payload.getTextOutputForNode === 'function') {
-				const val = String(
-					payload.getTextOutputForNode(fromNodeId, undefined, fromAnchorId) ?? ''
-				).trim()
-				if (typeof console !== 'undefined') {
-					console.log(
-						`[ComfyUI][CollectTexts] resolveUpstreamText fromNodeId=${fromNodeId} via getTextOutputForNode → ` +
-							`len=${val.length}, preview=${val.slice(0, 80).replace(/\n/g, '\\n')}`
-					)
-				}
-				return val
-			}
-			const fromNode = payload.store.state.nodesById[fromNodeId] as ComfyNode | undefined
-			if (!fromNode) return ''
-			const t = String(fromNode.type ?? '').toLowerCase()
-			let val = ''
-			if (t === 'text')
-				val = String(fromNode.textValue ?? fromNode.prompt ?? fromNode.value ?? '').trim()
-			else if (t === 'rotate-image') val = String(fromNode.rotatePromptText ?? '').trim()
-			else if (t === 'text-merge')
-				val = String(fromNode.mergedText ?? fromNode.textValue ?? '').trim()
-			else if (t === 'scene-understanding')
-				val = String((fromNode.sceneUnderstandingSettings as any)?.outputJson ?? '').trim()
-			if (typeof console !== 'undefined') {
-				console.log(
-					`[ComfyUI][CollectTexts] resolveUpstreamText fromNodeId=${fromNodeId} via FALLBACK (nodeType=${t}) → ` +
-						`len=${val.length}, preview=${val.slice(0, 80).replace(/\n/g, '\\n')}`
-				)
-			}
-			return val
-		}
-
-		for (const anchor of anchors) {
-			const mediaType = String(anchor?.mediaType ?? '').toLowerCase()
-			const acceptedRaw = (anchor as any)?.acceptedMediaTypes
-			const acceptedList = Array.isArray(acceptedRaw)
-				? (acceptedRaw as Array<unknown>).map((v) => String(v ?? '').toLowerCase())
-				: []
-			const multiInput = Boolean((anchor as any)?.multiInput)
-			const acceptsText = mediaType === 'text' || acceptedList.includes('text')
-
-			// —— 两种情况参与文本收集：
-			//    1) mediaType==='text' 的普通文本输入锚点（按设计规则，只允许连内置 text 节点）；
-			//    2) mediaType==='generic' + acceptedMediaTypes 包含 'text' 的多输入聚合锚点
-			//       （典型：ComfyUI / Blender 节点的 "in" 锚点，同时接收 text/image/video/model3d）。
-			//    对 image / video / model3d / unknown mediaType，一律跳过不参与提示词拼接。
-			if (!acceptsText) continue
-			const toAnchorId = String(anchor?.id ?? '').trim()
-			if (!toAnchorId) continue
-			result.textAnchorsSeen++
-
-			const anchorName = String(anchor?.name ?? anchor?.label ?? '').toLowerCase()
-			const classified: 'positive' | 'negative' = NEGATIVE_ANCHOR_RE.test(
-				`${toAnchorId} ${anchorName}`
-			)
-				? 'negative'
-				: 'positive'
-
-			// —— 聚合锚点分支（generic + multiInput）：同一个 "in" 下可能连了 text / image /
-			//    video 等多条入边，必须逐条遍历 edges 判断上游节点类型，解析文本（若上游
-			//    是 image/video 型节点，resolveUpstreamText 返回空字符串，自然被跳过）。
-			if (mediaType === 'generic' && multiInput) {
-				const anchoredEdges = incomingEdges.filter((e) => String(e.toAnchorId ?? '') === toAnchorId)
-				if (typeof console !== 'undefined') {
-					console.log(
-						`[ComfyUI][CollectTexts] STEP-B anchor=${toAnchorId} classified=${classified} ` +
-							`(generic 聚合锚点) → matched edges=${anchoredEdges.length}`
-					)
-				}
-				for (const e of anchoredEdges) {
-					const fromNodeId = String(e.fromNodeId ?? '')
-					if (!fromNodeId) continue
-					const fromAnchorId = String(e.fromAnchorId ?? '') || undefined
-					const text = resolveUpstreamText(fromNodeId, fromAnchorId)
-					if (!text) continue
-					result.textAnchorsFilled++
-					if (classified === 'negative') result.negative.push(text)
-					else result.positive.push(text)
-					result.inOrder.push({ value: text, classified })
-				}
-				continue
-			}
-
-			// —— 普通单文本锚点分支（mediaType==='text'）：走官方 getIncomingTextValue 解析器
-			//    （单锚点单连接；若用户仍需额外支持 multiInput 的 text 锚点，已由上层兜底。）
-			if (typeof console !== 'undefined') {
-				console.log(
-					`[ComfyUI][CollectTexts] STEP-B anchor=${toAnchorId} classified=${classified} ` +
-						`(普通文本锚点) → via getIncomingTextValue`
-				)
-			}
-			const text =
-				typeof payload.getIncomingTextValue === 'function'
-					? String(payload.getIncomingTextValue(nodeId, toAnchorId) ?? '').trim()
-					: ''
-			if (typeof console !== 'undefined') {
-				console.log(
-					`[ComfyUI][CollectTexts] STEP-C anchor=${toAnchorId} getIncomingTextValue 结果: ` +
-						`len=${text.length}, preview=${text.slice(0, 80).replace(/\n/g, '\\n')}`
-				)
-			}
-			if (!text) continue
-			result.textAnchorsFilled++
-			if (classified === 'negative') result.negative.push(text)
-			else result.positive.push(text)
-			result.inOrder.push({ value: text, classified })
-		}
-
-		if (typeof console !== 'undefined') {
-			console.log(
-				`%c[ComfyUI][CollectTexts] STEP-D 汇总: ` +
-					`textAnchorsSeen=${result.textAnchorsSeen}, textAnchorsFilled=${result.textAnchorsFilled}, ` +
-					`positive=${result.positive.length}段(${result.positive.reduce((a, s) => a + s.length, 0)}字), ` +
-					`negative=${result.negative.length}段(${result.negative.reduce((a, s) => a + s.length, 0)}字)`,
-				'color:#0369a1;font-weight:bold'
-			)
-			if (result.positive.length > 0) {
-				console.log(
-					'[ComfyUI][CollectTexts] positive[0] 完整前200字:\n' + result.positive[0].slice(0, 200)
-				)
-			}
-			if (result.negative.length > 0) {
-				console.log(
-					'[ComfyUI][CollectTexts] negative[0] 完整前200字:\n' + result.negative[0].slice(0, 200)
-				)
-			}
-		}
-		return result
-	}
-
 	const performComfyUIRun = async (nodeId: string) => {
 		const gen = generation
+		// Consume UI consent synchronously before any engine projection or await.
+		const initial = payload.store.state.nodesById[nodeId] as
+			| { comfyuiSettings?: { confirmRetry?: boolean } }
+			| undefined
+		const confirmedRetry = initial?.comfyuiSettings?.confirmRetry === true
+		if (confirmedRetry)
+			payload.store.commit('setNodeComfyUISettings', {
+				nodeId,
+				comfyuiSettings: { confirmRetry: false }
+			})
 		if (payload.ensureComfyTemplate && !(await payload.ensureComfyTemplate(nodeId))) {
 			payload.pushToast('无法解析当前模板，请刷新检查或选择一条成功历史', 'warn')
 			return
@@ -833,6 +658,8 @@ export const useAIWorkflowComfyRuntime = (payload: {
 		const node = nodeRecord as ComfyNode | undefined
 		const settings = (node?.comfyuiSettings ?? {}) as {
 			templateResolution?: ComfyTemplateResolution
+			seedPolicy?: 'preserve' | 'randomize'
+			confirmRetry?: boolean
 			inputBindings?: Record<string, string>
 			positivePromptEdited?: boolean
 			negativePromptEdited?: boolean
@@ -880,13 +707,44 @@ export const useAIWorkflowComfyRuntime = (payload: {
 		const workflowPath = String(settings.workflowPath ?? '').trim()
 		const configuredPositivePrompt = String(settings.positivePrompt ?? '')
 		const configuredNegativePrompt = String(settings.negativePrompt ?? '')
-		const incomingTexts = collectComfyInputTexts(nodeId)
-		const anchorPositiveParts = incomingTexts.positive
-		const anchorNegativeParts = incomingTexts.negative
-		const positiveCandidateParts = [...anchorPositiveParts, configuredPositivePrompt]
-		const negativeCandidateParts = [...anchorNegativeParts, configuredNegativePrompt]
-		const finalPositivePrompt = positiveCandidateParts.filter(Boolean).join('\n\n')
-		const finalNegativePrompt = negativeCandidateParts.filter(Boolean).join('\n\n')
+		const incomingTexts = collectComfyPromptInputs({
+			nodeId,
+			...payload.store.state,
+			resolveText: payload.getTextOutputForNode
+		})
+		const finalPositivePrompt = comfyPromptOverride(
+			incomingTexts.positiveConnected,
+			incomingTexts.positive,
+			configuredPositivePrompt,
+			settings.positivePromptEdited
+		)
+		const finalNegativePrompt = comfyPromptOverride(
+			incomingTexts.negativeConnected,
+			incomingTexts.negative,
+			configuredNegativePrompt,
+			settings.negativePromptEdited
+		)
+		console.info('[ComfyUI:TextInput]', {
+			nodeId,
+			positiveSource: incomingTexts.positiveConnected
+				? 'connection'
+				: finalPositivePrompt === undefined
+					? 'template'
+					: 'panel',
+			negativeSource: incomingTexts.negativeConnected
+				? 'connection'
+				: finalNegativePrompt === undefined
+					? 'template'
+					: 'panel',
+			positiveLength: finalPositivePrompt?.length ?? 0,
+			negativeLength: finalNegativePrompt?.length ?? 0,
+			positiveTargets: settings.historyInputMappings?.textNodes?.positive?.map(
+				(t) => `${t.nodeId}:${t.inputKey}`
+			),
+			negativeTargets: settings.historyInputMappings?.textNodes?.negative?.map(
+				(t) => `${t.nodeId}:${t.inputKey}`
+			)
+		})
 
 		if (!node || node.type !== 'comfyui') return
 		if (!baseUrl) {
@@ -956,15 +814,20 @@ export const useAIWorkflowComfyRuntime = (payload: {
 			})
 
 			const runParams = {
-				positivePrompt: finalPositivePrompt || (settings.positivePromptEdited ? '' : undefined),
-				negativePrompt: finalNegativePrompt || (settings.negativePromptEdited ? '' : undefined),
+				positivePrompt: finalPositivePrompt,
+				negativePrompt: finalNegativePrompt,
 				snapshotId: settings.templateResolution?.snapshotId,
 				contentHash: settings.templateResolution?.contentHash,
 				workflowHash: settings.templateResolution?.workflowHash,
+				semanticHash: settings.templateResolution?.semanticHash,
+				nodeSchemaHash: settings.templateResolution?.nodeSchemaHash,
+				seedPolicy: settings.seedPolicy || 'preserve',
+				confirmRetry: confirmedRetry,
 				historyPromptId: settings.historyPromptId,
 				inputMappings: settings.historyInputMappings
 			}
 			const rr = await payload.comfyService.run(baseUrl, workflowPath, allFiles, runParams)
+			if (payload.submissionOnly) return rr
 			const active = payload.store.state.nodesById[nodeId] as ComfyNode | undefined
 			if (
 				generation !== gen ||
@@ -973,6 +836,24 @@ export const useAIWorkflowComfyRuntime = (payload: {
 			)
 				return
 			if (!rr.ok) {
+				payload.store.commit('setNodeComfyUISettings', {
+					nodeId,
+					comfyuiSettings: {
+						confirmRetry: false,
+						submissionUnknown: rr.error === 'SUBMISSION_UNKNOWN'
+					}
+				})
+				if (['STALE_TEMPLATE', 'DEPENDENCY_CHANGED', 'INVALID_INPUT_BINDING'].includes(rr.error)) {
+					payload.store.commit('setNodeComfyUISettings', {
+						nodeId,
+						comfyuiSettings: {
+							templateResolution: undefined,
+							resolutionState: 'blocked',
+							historyError: rr.error,
+							historyGuideMessage: rr.message || rr.error
+						}
+					})
+				}
 				if (rr.requiresHistorySetup) {
 					payload.store.commit('setNodeComfyUISettings', {
 						nodeId,
@@ -1034,6 +915,8 @@ export const useAIWorkflowComfyRuntime = (payload: {
 				comfyuiSettings: {
 					runStatus: 'running',
 					promptId: pid,
+					confirmRetry: false,
+					submissionUnknown: false,
 					progress: 10,
 					statusText: pid ? t('nodes.comfyui.submitted') : t('nodes.comfyui.submittedNoPromptId'),
 					lastUpdateAt: Date.now()
@@ -1136,6 +1019,7 @@ export const useAIWorkflowComfyRuntime = (payload: {
 
 			if (pid) startComfyUIPoll(nodeId, baseUrl, pid)
 		} catch (err: unknown) {
+			if (payload.submissionOnly) throw err
 			console.error('[ComfyUI] 运行异常', {
 				nodeId,
 				baseUrl,
@@ -1308,7 +1192,7 @@ export const useAIWorkflowComfyRuntime = (payload: {
 			return
 		submissions.add(nodeId)
 		try {
-			await performComfyUIRun(nodeId)
+			return await performComfyUIRun(nodeId)
 		} finally {
 			submissions.delete(nodeId)
 		}

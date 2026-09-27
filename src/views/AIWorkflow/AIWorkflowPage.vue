@@ -1,5 +1,26 @@
 <template>
 	<div class="aiwf-page">
+		<FrameRunPanel
+			v-if="automationPanelFrame"
+			:frame-id="automationPanelFrame.id"
+			:title="automationPanelFrame.label"
+			:members="automationPanelMembers"
+			:automation="automationPanelFrame.automation"
+			@rebind="rebindAutomation"
+			@mode="setAutomationBindingMode"
+			:sources="automationPanelSources"
+			:running="automationRunning"
+			:message="automationMessage"
+			:records="automationRecords"
+			:detail="automationDetail"
+			@close="closeAutomation"
+			@run="runAutomationRecipe"
+			@stop="stopAutomation"
+			@replay="replayAutomation"
+			@inspect="inspectAutomation"
+			@resume="resumeAutomation"
+			@reuse="reuseAutomation"
+		/>
 		<BlueprintStartupOverlay
 			:visible="startupOverlayVisible"
 			:title="blueprintStartupProgress.title"
@@ -165,6 +186,9 @@
 			:comfy-service="comfyService"
 			:current-workflow-data="comfyLocalWorkflowManagerData"
 			:current-workflow-name="comfyLocalWorkflowManagerName"
+			:base-url="
+				store.state.nodesById[comfyLocalWorkflowManagerNodeId]?.comfyuiSettings?.baseUrl || ''
+			"
 			@close="comfyLocalWorkflowManagerVisible = false"
 			@changed="onComfyLocalWorkflowManagerChanged"
 		/>
@@ -680,6 +704,20 @@
 </template>
 
 <script setup lang="ts">
+import FrameRunPanel from '../../ui/WorkFlow/selection/FrameRunPanel.vue'
+import {
+	captureFrameRecipe,
+	type FrameStepChoice,
+	type FrameRecipe
+} from './automation/frameExecutionContext'
+import { executeFrameComfy, frameComfyOutputPatch } from './automation/frameComfyExecutor'
+import {
+	createFrameRunCoordinator,
+	type FrameExecutionInput,
+	type FrameRunSummary,
+	type FrameRunRecord
+} from './automation/frameRunCoordinator'
+import { frameAutomationRequest } from '../../electronBridge/frameAutomation'
 import { useI18n } from '../../i18n'
 import {
 	getErrorMessage,
@@ -1001,7 +1039,6 @@ import {
 	type InputParamPreviewRef
 } from './node-business/presentation/useAIWorkflowTextOutputResolver'
 import { useAIWorkflowSelectionFrame } from './blueprint-core/selection/useAIWorkflowSelectionFrame'
-import { useFrameAutomationRunner } from './automation/useFrameAutomationRunner'
 import { useGlobalTaskBridge } from '../../composables/useGlobalTaskBridge'
 import { useAIWorkflowTagEditor } from './blueprint-core/selection/useAIWorkflowTagEditor'
 import { isSceneLayoutModelTargetItem } from './node-business/scene/sceneDecomposeShared'
@@ -1182,6 +1219,7 @@ const {
 	saveSelectionFrame,
 	deleteSavedSelectionFrame,
 	getSavedSelectionFrames,
+	configureFrameAutomation,
 	setFrameAutomationRunState,
 	worldToScreen
 } = useAIWorkflowBlueprintHost()
@@ -3860,7 +3898,11 @@ const downloadAssetViaElectron = async (
 	}
 }
 
-const ensureActiveProjectRootRegistered = async (projectId: number): Promise<string> => {
+const ensureActiveProjectRootRegistered = async (
+	projectId: number,
+	assertActive?: () => void
+): Promise<string> => {
+	assertActive?.()
 	const pid = Number(projectId)
 	if (!Number.isFinite(pid) || pid <= 0) return ''
 
@@ -3869,6 +3911,7 @@ const ensureActiveProjectRootRegistered = async (projectId: number): Promise<str
 	// Use localdb-backed project list as authoritative source to avoid stale in-memory rootPath.
 	try {
 		const listed = await blueprintProjectService.listProjects()
+		assertActive?.()
 		if (listed.ok && Array.isArray(listed.projects)) {
 			const hit = listed.projects.find((p) => Number(p?.id) === pid)
 			const listedRoot = String(hit?.rootPath || '').trim()
@@ -3886,6 +3929,7 @@ const ensureActiveProjectRootRegistered = async (projectId: number): Promise<str
 		// ignore and keep current in-memory rootPath
 	}
 
+	assertActive?.()
 	// 同步项目 ID 和根路径到 vuex store，供节点组件（如导演控制台节点）读取工作区目录
 	store.commit('setProjectId', { projectId: pid })
 	if (rootPath) {
@@ -4171,7 +4215,29 @@ const clearAllBlenderRetryTimers = () => {
 	blenderRetryTimers.clear()
 }
 
-const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
+const rootWorkflowStore = store
+const onNodeChatSubmit = async (
+	payload: WorkflowNodeChatSubmitPayload,
+	execution?: FrameExecutionInput
+) => {
+	const sessionProjectId = currentProjectId.value
+	const store = execution
+		? new Proxy(rootWorkflowStore, {
+				get(target, key) {
+					if (key === 'state') return execution.state
+					if (key === 'commit' || key === 'dispatch')
+						return (...args: unknown[]) => {
+							execution.assertActive()
+							if (currentProjectId.value !== sessionProjectId)
+								throw new Error('自动化项目已切换，拒绝过期写入')
+							return (Reflect.get(target, key) as (...values: unknown[]) => unknown)(...args)
+						}
+					return Reflect.get(target, key)
+				}
+			})
+		: rootWorkflowStore
+	const executionStore = store
+
 	if (payload.nodeType === 'blender') {
 		store.commit('setNodeChatSubmitting', { submitting: true })
 		const node = store.state.nodesById[payload.nodeId]
@@ -4184,7 +4250,7 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 			await runBlenderAgentChat(
 				{
 					store,
-					getProjectId: () => currentProjectId.value,
+					getProjectId: () => (execution ? sessionProjectId : currentProjectId.value),
 					pushToast: (message: string, tone: 'info' | 'warn' | 'error' = 'info') => {
 						const sysMsgId = `blender-sys-${Date.now()}`
 						store.commit('appendBlenderChatMessage', {
@@ -4214,7 +4280,15 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 	}
 	let resolvedPrompt = payload.prompt
 	if (!resolvedPrompt.trim() && payload.nodeType !== 'model3d') {
-		const refs = getInputParamPreviewRefs(payload.nodeId)
+		const refs: { kind: string; text?: string }[] = execution
+			? execution.state.edgeOrder
+					.map((id) => execution.state.edgesById[id])
+					.filter((e) => e.toNodeId === payload.nodeId)
+					.map((e) => ({
+						kind: 'text',
+						text: execution.state.nodesById[e.fromNodeId]?.textValue || ''
+					}))
+			: getInputParamPreviewRefs(payload.nodeId)
 		const textRef = refs.find((r) => r.kind === 'text' && r.text)
 		if (textRef && textRef.text) {
 			resolvedPrompt = textRef.text
@@ -4225,12 +4299,15 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 	const castPayload = finalPayload as unknown as Parameters<typeof runNodeGenerationTask>[1]
 	const result = await runNodeGenerationTask(
 		{
-			store,
+			store: executionStore,
+			onTaskRegistered: execution?.onTaskRegistered,
 			comfyService,
 			resolveBackendUrl,
 			resolveBackendFetchUrl,
-			getProjectId: () => currentProjectId.value,
-			nodeResourceUrl,
+			getProjectId: () => (execution ? sessionProjectId : currentProjectId.value),
+			nodeResourceUrl: execution
+				? (node) => execution.state.resourcesById[node.resourceId]?.url || null
+				: nodeResourceUrl,
 			pushToast: (message: string, tone: 'info' | 'warn' | 'error' = 'info') => {
 				chatMessages.value = [
 					...chatMessages.value,
@@ -4246,9 +4323,11 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 			},
 			bindTextResultToNode: (nodeId: string, text: string) => {
 				store.commit('setNodeTextValue', { nodeId, textValue: text })
+				execution?.onTextResult?.(nodeId, text)
 				patchBlueprintNodeData(nodeId)
 			},
 			bindImageResultToNode: async (nodeId: string, url: string) => {
+				execution?.assertActive()
 				const node = store.state.nodesById[nodeId]
 				console.log('[MeshyPoll#bindImageResultToNode] ENTER', {
 					nodeId,
@@ -4271,7 +4350,7 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 					name: resourceName,
 					url: ''
 				}
-				const pid = Number(currentProjectId.value ?? 0)
+				const pid = Number((execution ? sessionProjectId : currentProjectId.value) ?? 0)
 				const sourceUrl = String(url || '').trim()
 
 				// 如果已经是 dweb:// URL，直接使用
@@ -4309,6 +4388,7 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 					}
 					store.commit('addResource', base)
 					store.commit('setNodeResource', { nodeId, resourceId })
+					execution?.onResourceResult?.(rootWorkflowStore.state.resourcesById[resourceId])
 					patchBlueprintNodeData(nodeId)
 					console.log('[MeshyPoll#bindImageResultToNode] SUCCESS', {
 						nodeId,
@@ -4327,7 +4407,7 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 					)
 					return false
 				}
-				const rootPath = await ensureActiveProjectRootRegistered(pid)
+				const rootPath = await ensureActiveProjectRootRegistered(pid, execution?.assertActive)
 				if (isElectron() && !rootPath) {
 					pushToast(
 						t('aiworkflow.page.media.importFailedNoRootBound', {
@@ -4402,10 +4482,12 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 				}
 				store.commit('addResource', base)
 				store.commit('setNodeResource', { nodeId, resourceId })
+				execution?.onResourceResult?.(rootWorkflowStore.state.resourcesById[resourceId])
 				patchBlueprintNodeData(nodeId)
 				return base.url
 			},
 			bindVideoResultToNode: async (nodeId: string, url: string) => {
+				execution?.assertActive()
 				const node = store.state.nodesById[nodeId]
 				if (!node) return false
 				const resourceId = `gen-video-${nodeId}-${Date.now()}`
@@ -4416,7 +4498,7 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 					name: resourceName,
 					url: ''
 				}
-				const pid = Number(currentProjectId.value ?? 0)
+				const pid = Number((execution ? sessionProjectId : currentProjectId.value) ?? 0)
 				const sourceUrl = String(url || '').trim()
 
 				if (sourceUrl.toLowerCase().startsWith('dweb://project-assets')) {
@@ -4453,6 +4535,7 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 					}
 					store.commit('addResource', base)
 					store.commit('setNodeResource', { nodeId, resourceId })
+					execution?.onResourceResult?.(rootWorkflowStore.state.resourcesById[resourceId])
 					patchBlueprintNodeData(nodeId)
 					return true
 				}
@@ -4466,7 +4549,7 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 					)
 					return false
 				}
-				const rootPath = await ensureActiveProjectRootRegistered(pid)
+				const rootPath = await ensureActiveProjectRootRegistered(pid, execution?.assertActive)
 				if (isElectron() && !rootPath) {
 					pushToast(
 						t('aiworkflow.page.media.importFailedNoRootBound', {
@@ -4545,10 +4628,12 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 				}
 				store.commit('addResource', base)
 				store.commit('setNodeResource', { nodeId, resourceId })
+				execution?.onResourceResult?.(rootWorkflowStore.state.resourcesById[resourceId])
 				patchBlueprintNodeData(nodeId)
 				return true
 			},
 			bindModel3dResultToNode: async (nodeId: string, url: string, format?: string) => {
+				execution?.assertActive()
 				const node = store.state.nodesById[nodeId]
 				if (!node) return false
 				const resourceId = `gen-model3d-${nodeId}-${Date.now()}`
@@ -4560,7 +4645,7 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 					url: '',
 					format: format || 'glb'
 				}
-				const pid = Number(currentProjectId.value ?? 0)
+				const pid = Number((execution ? sessionProjectId : currentProjectId.value) ?? 0)
 				const sourceUrl = String(url || '').trim()
 
 				if (sourceUrl.toLowerCase().startsWith('dweb://project-assets')) {
@@ -4587,6 +4672,7 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 					}
 					store.commit('addResource', base)
 					store.commit('setNodeResource', { nodeId, resourceId })
+					execution?.onResourceResult?.(rootWorkflowStore.state.resourcesById[resourceId])
 					patchBlueprintNodeData(nodeId)
 					return true
 				}
@@ -4600,7 +4686,7 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 					)
 					return false
 				}
-				const rootPath = await ensureActiveProjectRootRegistered(pid)
+				const rootPath = await ensureActiveProjectRootRegistered(pid, execution?.assertActive)
 				if (isElectron() && !rootPath) {
 					pushToast(
 						t('aiworkflow.page.media.importFailedNoRootBound', {
@@ -4666,11 +4752,12 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 				}
 				store.commit('addResource', base)
 				store.commit('setNodeResource', { nodeId, resourceId })
+				execution?.onResourceResult?.(rootWorkflowStore.state.resourcesById[resourceId])
 				patchBlueprintNodeData(nodeId)
 				return true
 			},
 			downloadUrlAsBlob: async (url: string): Promise<Blob | null> => {
-				const pid = Number(currentProjectId.value ?? 0)
+				const pid = Number((execution ? sessionProjectId : currentProjectId.value) ?? 0)
 				if (pid > 0 && url) {
 					const dl = await downloadAssetViaElectron(pid, url, `blob-${Date.now()}`)
 					if (dl) {
@@ -4698,119 +4785,283 @@ const onNodeChatSubmit = async (payload: WorkflowNodeChatSubmitPayload) => {
 
 				return null
 			},
-			createImageNodeAtCenter,
-			createImageNodeAt,
-			persistExternalAssetToProject,
+			createImageNodeAtCenter: execution ? undefined : createImageNodeAtCenter,
+			createImageNodeAt: execution ? undefined : createImageNodeAt,
+			persistExternalAssetToProject: async (payload) => {
+				execution?.assertActive()
+				return persistExternalAssetToProject(payload)
+			},
 			globalTaskBridge
 		},
 		castPayload
 	)
 
-	if (result.ok && result.taskType === 'meshy-3d' && result.taskId && result.mode) {
+	if (!execution && result.ok && result.taskType === 'meshy-3d' && result.taskId && result.mode) {
 		startMeshyPoll(payload.nodeId, result.taskId, result.mode)
 	}
 	return result?.ok === true
 }
 
-// ========== 多选组合自动化（frame-automation）==========
-// 引擎只负责把「运行」点击以 frameId 上报；Host 层从权威状态取成员/组内边/循环次数，
-// 按拓扑序逐节点复用 onNodeChatSubmit 既有单节点链路，进度回写引擎按钮条，不新增后端通道。
-const FRAME_AUTOMATION_RUNNABLE_NODE_TYPES = new Set<WorkflowNodeChatSubmitPayload['nodeType']>([
-	'text',
-	'image',
-	'video',
-	'model3d'
-])
-const runningAutomationFrameIds = new Set<string>()
-
-const isFrameAutomationNodeRunnable = (nodeId: string): boolean => {
-	const node = store.state.nodesById[nodeId]
-	if (!node) return false
-	if (
-		!FRAME_AUTOMATION_RUNNABLE_NODE_TYPES.has(
-			String(node.type) as WorkflowNodeChatSubmitPayload['nodeType']
+// Frame orchestration keeps an immutable execution context; geometry remains engine-owned.
+const automationPanelId = ref('')
+const automationRunning = ref(false)
+let automationSession = 0
+const automationMessage = ref('')
+const automationRecords = ref<FrameRunSummary[]>([])
+const automationDetail = ref<FrameRunRecord>()
+const automationPanelFrame = computed(() =>
+	store.state.savedSelectionFrames.find((f) => f.id === automationPanelId.value)
+)
+const automationPanelMembers = computed(() =>
+	(automationPanelFrame.value?.nodeIds || []).map((id) => store.state.nodesById[id]).filter(Boolean)
+)
+const automationPanelSources = computed(() =>
+	store.state.nodeOrder
+		.map((id) => store.state.nodesById[id])
+		.filter(
+			(n) =>
+				n && !automationPanelFrame.value?.nodeIds.includes(n.id) && (n.resourceId || n.textValue)
 		)
-	)
-		return false
-	const taskIds = store.state.nodeGenerationTaskIdsByNodeId?.[nodeId]
-	if (Array.isArray(taskIds)) {
-		const hasActiveTask = taskIds.some((taskId) => {
-			const task = store.state.nodeGenerationTasksById[taskId]
-			return task?.status === 'submitting' || task?.status === 'running'
-		})
-		if (hasActiveTask) return false
+)
+const automationCoordinator = createFrameRunCoordinator({
+	executeComfy: (nodeId, context) =>
+		executeFrameComfy(nodeId, context, {
+			service: comfyService,
+			persist: async (media, name) => {
+				context.assertActive()
+				await ensureActiveProjectRootRegistered(
+					Number(currentProjectId.value),
+					context.assertActive
+				)
+				context.assertActive()
+				const asset = await persistExternalAssetToProject({
+					kind: media.kind === 'model3d' ? 'file' : media.kind,
+					name,
+					sourceUrl: media.url
+				})
+				context.assertActive()
+				return asset
+			}
+		}),
+	publish: (outputs) => {
+		for (const out of outputs) {
+			if (!store.state.nodesById[out.nodeId]) throw new Error('输出节点已删除')
+			if (out.resource) {
+				store.commit('addResource', out.resource)
+				if (out.node.type !== 'comfyui')
+					store.commit('setNodeResource', { nodeId: out.nodeId, resourceId: out.resource.id })
+			}
+			if (out.node.type === 'comfyui')
+				store.commit('setNodeComfyUISettings', {
+					nodeId: out.nodeId,
+					comfyuiSettings: frameComfyOutputPatch(out.node)
+				})
+			if (out.node.type === 'text')
+				store.commit('setNodeTextValue', {
+					nodeId: out.nodeId,
+					textValue: out.node.textValue || ''
+				})
+			patchBlueprintNodeData(out.nodeId)
+		}
+	},
+	state: () => store.state,
+	projectId: () => currentProjectId.value,
+	changed: (message) => {
+		automationMessage.value = message
+	},
+	submit: async (nodeId, execution) => {
+		const node = execution.state.nodesById[nodeId]
+		return onNodeChatSubmit(
+			{
+				nodeId,
+				nodeType: node.type as WorkflowNodeChatSubmitPayload['nodeType'],
+				prompt: node.nodeChatDraft || '',
+				params: node.nodeChatParams || {}
+			},
+			execution
+		)
 	}
-	return true
+})
+const unloadAutomation = () => {
+	automationSession++
+	automationCoordinator.dispose()
 }
-
-const submitFrameAutomationNode = async (nodeId: string): Promise<boolean> => {
-	const node = store.state.nodesById[nodeId]
-	if (!node) return false
-	const payload: WorkflowNodeChatSubmitPayload = {
-		nodeId,
-		nodeType: String(node.type) as WorkflowNodeChatSubmitPayload['nodeType'],
-		prompt: String((node as any).nodeChatDraft ?? ''),
-		params: {
-			...(((node as any).nodeChatParams as Record<string, unknown> | undefined) ?? {})
-		} as WorkflowNodeChatSubmitPayload['params']
-	}
+window.addEventListener('beforeunload', unloadAutomation)
+onBeforeUnmount(() => {
+	unloadAutomation()
+	window.removeEventListener('beforeunload', unloadAutomation)
+})
+const refreshAutomationRecords = async () => {
+	if (!currentProjectId.value || !automationPanelId.value) return
+	const projectId = currentProjectId.value,
+		frameId = automationPanelId.value
+	const records = await frameAutomationRequest<FrameRunSummary[]>('list', { projectId, frameId })
+	if (currentProjectId.value === projectId && automationPanelId.value === frameId)
+		automationRecords.value = records
+}
+const onFrameAutomationRun = async ({ frameId }: { frameId: string }) => {
+	automationPanelId.value = frameId
+	automationDetail.value = undefined
 	try {
-		const ok = await onNodeChatSubmit(payload)
-		return ok !== false
+		await refreshAutomationRecords()
 	} catch (err) {
-		console.error('[FrameAutomation] 节点自动执行失败:', nodeId, err)
-		return false
+		automationMessage.value = String(err)
 	}
 }
-
-const onFrameAutomationRun = async (payload: { frameId: string }): Promise<void> => {
-	const frameId = String(payload?.frameId ?? '')
-	if (!frameId || runningAutomationFrameIds.has(frameId)) return
-	const frame = store.state.savedSelectionFrames.find((item) => item.id === frameId)
-	if (!frame?.automation?.enabled) return
-
-	const memberSet = new Set(frame.nodeIds)
-	const memberIds = frame.nodeIds.filter((id) => !!store.state.nodesById[id])
-	if (memberIds.length < 2 || !memberIds.some(isFrameAutomationNodeRunnable)) {
-		// 引擎在点击时已先置 running，前置失败必须回写终态，否则按钮永久卡死无法重跑
-		setFrameAutomationRunState(frameId, { status: 'error' })
-		pushToast(t('aiworkflow.runtime.frameAutomation.noRunnableNode'), 'warn')
+const executeAutomation = async (
+	recipe: FrameRecipe,
+	parentRunId?: string,
+	resume?: FrameRunRecord
+) => {
+	if (automationRunning.value) return
+	const session = ++automationSession
+	automationRunning.value = true
+	setFrameAutomationRunState(recipe.frame.id, { status: 'running' })
+	try {
+		const result = await automationCoordinator.run(recipe, parentRunId, resume)
+		if (session !== automationSession) return
+		setFrameAutomationRunState(recipe.frame.id, {
+			status: result.status === 'succeeded' ? 'success' : 'idle'
+		})
+	} catch (err) {
+		if (session !== automationSession) return
+		automationMessage.value = String(err)
+		setFrameAutomationRunState(recipe.frame.id, { status: 'error' })
+		pushToast(String(err), 'error')
+	} finally {
+		if (session === automationSession) {
+			automationRunning.value = false
+			await refreshAutomationRecords().catch(() => {})
+		}
+	}
+}
+const runAutomationRecipe = async (
+	replacements: Record<string, string>,
+	steps: Record<string, FrameStepChoice>
+) => {
+	const frame = automationPanelFrame.value
+	if (!frame) return
+	try {
+		await executeAutomation(captureFrameRecipe(store.state, frame, replacements, steps))
+	} catch (err) {
+		automationMessage.value = String(err)
+	}
+}
+const inspectAutomation = async (runId: string) => {
+	try {
+		const projectId = currentProjectId.value,
+			frameId = automationPanelId.value
+		automationDetail.value = undefined
+		const detail = await frameAutomationRequest<FrameRunRecord>('get', { projectId, runId })
+		if (currentProjectId.value === projectId && automationPanelId.value === frameId)
+			automationDetail.value = detail
+	} catch (err) {
+		automationMessage.value = String(err)
+	}
+}
+const replayAutomation = async (runId: string) => {
+	await inspectAutomation(runId)
+	const record = automationDetail.value
+	if (!record || record.id !== runId) return
+	if (!['succeeded', 'failed', 'cancelled'].includes(record.status)) {
+		automationMessage.value = '该记录可能仍有在途任务，请先在任务面板核对；禁止自动重发'
 		return
 	}
-
-	// 只取两端都在组内的边参与拓扑排序（跨框连线不决定组内执行顺序）
-	const edges = store.state.edgeOrder
-		.map((edgeId) => store.state.edgesById[edgeId])
-		.filter((edge): edge is WorkflowEdge => !!edge)
-		.filter((edge) => memberSet.has(edge.fromNodeId) && memberSet.has(edge.toNodeId))
-		.map((edge) => ({ fromNodeId: edge.fromNodeId, toNodeId: edge.toNodeId }))
-
-	runningAutomationFrameIds.add(frameId)
-	const runner = useFrameAutomationRunner({
-		submitNode: submitFrameAutomationNode,
-		isNodeRunnable: isFrameAutomationNodeRunnable,
-		onStateChange: (state) => {
-			setFrameAutomationRunState(frameId, state)
-		},
-		pushToast: (message, tone) => {
-			pushToast(message, tone)
-		}
-	})
-
-	try {
-		await runner.runFrameAutomation({
-			frameId,
-			nodeIds: memberIds,
-			loopCount: Math.max(1, Math.floor(Number(frame.automation.loopCount)) || 1),
-			edges
-		})
-	} catch (err) {
-		console.error('[FrameAutomation] 自动化运行异常:', frameId, err)
-		setFrameAutomationRunState(frameId, { status: 'error' })
-		pushToast(t('aiworkflow.runtime.frameAutomation.fatalError'), 'error')
-	} finally {
-		runningAutomationFrameIds.delete(frameId)
+	await executeAutomation(record.recipe, runId)
+}
+const resumeAutomation = async (runId: string) => {
+	await inspectAutomation(runId)
+	const record = automationDetail.value
+	if (!record || record.id !== runId || !['failed', 'cancelled'].includes(record.status)) return
+	await executeAutomation(record.recipe, runId, record)
+}
+const reuseAutomation = async (runId: string) => {
+	await inspectAutomation(runId)
+	const record = automationDetail.value
+	if (!record || record.id !== runId || record.status !== 'succeeded') return
+	const event = [...record.events].reverse().find((e) => e.type === 'IterationCompleted')
+	const outputs = event?.payload.outputs as
+		| { nodeId: string; node: WorkflowNode; resource?: GeneratedResourceBase }[]
+		| undefined
+	if (!outputs?.length) {
+		automationMessage.value = '记录没有可复用产物'
+		return
 	}
+	if (outputs.some((o) => !store.state.nodesById[o.nodeId])) {
+		automationMessage.value = '输出节点已删除，无法应用旧结果'
+		return
+	}
+	try {
+		const projectId = currentProjectId.value
+		const expected = Object.assign(
+			{},
+			...record.events
+				.filter((e) => ['StepSucceeded', 'StepReused', 'PreflightPassed'].includes(e.type))
+				.map((e) => e.payload.manifest || {})
+		)
+		await frameAutomationRequest('validateAssets', {
+			projectId,
+			resources: outputs.map((o) => o.resource).filter(Boolean),
+			expected
+		})
+		if (projectId !== currentProjectId.value) throw new Error('项目已切换或节点正在运行')
+	} catch (err) {
+		automationMessage.value = String(err)
+		return
+	}
+	for (const out of outputs) {
+		if (out.resource) {
+			store.commit('addResource', out.resource)
+			if (out.node.type !== 'comfyui')
+				store.commit('setNodeResource', { nodeId: out.nodeId, resourceId: out.resource.id })
+		}
+		if (out.node.type === 'comfyui')
+			store.commit('setNodeComfyUISettings', {
+				nodeId: out.nodeId,
+				comfyuiSettings: frameComfyOutputPatch(out.node)
+			})
+		if (out.node.type === 'text')
+			store.commit('setNodeTextValue', { nodeId: out.nodeId, textValue: out.node.textValue || '' })
+		patchBlueprintNodeData(out.nodeId)
+	}
+	automationMessage.value = '已复用记录中的产物，未提交新的生成任务'
+}
+const setAutomationBindingMode = (id: string, bindingMode: 'target-input' | 'source-output') => {
+	const frame = automationPanelFrame.value
+	if (!frame?.automation || automationRunning.value) return
+	configureFrameAutomation(frame.id, {
+		inputBindings: frame.automation.inputBindings.map((b) =>
+			b.id === id ? { ...b, bindingMode } : b
+		)
+	})
+}
+const rebindAutomation = (
+	direction: 'inputBindings' | 'outputBindings',
+	id: string,
+	nodeId: string,
+	anchorId: string
+) => {
+	const frame = automationPanelFrame.value
+	if (!frame?.automation || automationRunning.value) return
+	const bindings = frame.automation[direction].map((b) =>
+		b.id === id ? { ...b, nodeId, anchorId } : b
+	)
+	if (!configureFrameAutomation(frame.id, { [direction]: bindings }))
+		automationMessage.value = '接口修改失败：请检查端口类型、重叠组合或运行状态'
+}
+const stopAutomation = () => {
+	automationSession++
+	automationCoordinator.stop()
+	automationRunning.value = false
+	if (automationPanelId.value)
+		setFrameAutomationRunState(automationPanelId.value, { status: 'idle' })
+	automationMessage.value = '本次本地会话已终止，可重新运行；已提交的 ComfyUI 任务由外部进程处理'
+	void refreshAutomationRecords().catch(() => {})
+}
+
+const closeAutomation = () => {
+	stopAutomation()
+	automationPanelId.value = ''
 }
 
 const onNodeChatRemoveParamRef = (item: InputParamPreviewRef) => {
@@ -10481,6 +10732,7 @@ const onComfyLocalWorkflowManagerChanged = async () => {
 	const nodeId = comfyLocalWorkflowManagerNodeId.value
 	if (nodeId) {
 		await reloadComfyLocalWorkflows(nodeId)
+		await onRefreshHistoryCheck(nodeId)
 	}
 }
 

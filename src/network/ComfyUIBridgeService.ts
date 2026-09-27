@@ -1,5 +1,9 @@
 import { callComfyRuntime } from '../electronBridge'
-import type { ComfyTemplateResolution } from '../aiworkflow/types'
+import type {
+	ComfyTemplateResolution,
+	ComfyTemplateDiagnostics,
+	ComfyHistoryCandidate
+} from '../aiworkflow/types'
 import { getBackendBaseUrl } from './backendConfig'
 import { isAgentToUiMessage } from '../core/agentToUI'
 import type { AgentToUiMessage } from '../core/agentToUI'
@@ -648,6 +652,8 @@ export type ResolveHistoryResponse =
 			baseUrl: string
 			hasHistory: boolean
 			resolution?: ComfyTemplateResolution
+			diagnostics?: ComfyTemplateDiagnostics
+			warnings?: string[]
 			promptGraph: Record<string, any>
 			promptId: string
 			matchType: 'exact' | 'fuzzy' | 'direct'
@@ -672,6 +678,9 @@ export type ResolveHistoryResponse =
 	| {
 			ok: false
 			error: 'NO_HISTORY' | string
+			candidates?: ComfyHistoryCandidate[]
+			diagnostics?: ComfyTemplateDiagnostics
+			warnings?: string[]
 			message?: string
 			baseUrl?: string
 			requiresHistorySetup?: boolean
@@ -2711,6 +2720,10 @@ export class ComfyUIBridgeService {
 		}
 	}
 
+	async manageRecovery(baseUrl: string, action: 'export' | 'import' | 'legacy') {
+		return callComfyRuntime('recovery', { baseUrl, action })
+	}
+
 	async run(
 		comfyBaseUrl: string,
 		workflowPath: string,
@@ -2723,6 +2736,11 @@ export class ComfyUIBridgeService {
 			snapshotId?: string
 			contentHash?: string
 			workflowHash?: string
+			semanticHash?: string
+			nodeSchemaHash?: string
+			seedPolicy?: 'preserve' | 'randomize'
+			confirmRetry?: boolean
+			submissionScope?: string
 		}
 	): Promise<RunResponse> {
 		if (isComfyRuntimeIpcAvailable()) {
@@ -2738,17 +2756,32 @@ export class ComfyUIBridgeService {
 					snapshotId: overrides?.snapshotId,
 					contentHash: overrides?.contentHash,
 					workflowHash: overrides?.workflowHash,
+					semanticHash: overrides?.semanticHash,
+					nodeSchemaHash: overrides?.nodeSchemaHash,
+					seedPolicy: overrides?.seedPolicy || 'preserve',
+					confirmRetry: overrides?.confirmRetry === true,
+					submissionScope: overrides?.submissionScope,
 					files: dataUrlFiles
 				}
 				const ipcPayload = JSON.parse(JSON.stringify(rawPayload))
 				const ipcResult = await callComfyRuntime('run', ipcPayload)
+				console.info(
+					'[ComfyUI:diagnostic]',
+					JSON.stringify({
+						event: 'run',
+						ok: ipcResult?.ok,
+						promptId: ipcResult?.promptId,
+						error: ipcResult?.ok === false ? ipcResult.error : undefined,
+						diagnostics: ipcResult?.diagnostics
+					})
+				)
 				if (ipcResult && typeof ipcResult === 'object') {
 					if (ipcResult.ok === false) {
 						return {
 							ok: false,
 							status: ipcResult.status || 500,
 							baseUrl: comfyBaseUrl,
-							error: ipcResult.message || ipcResult.error || 'run failed via IPC',
+							error: ipcResult.error || 'run failed via IPC',
 							requiresHistorySetup: ipcResult.requiresHistorySetup,
 							message: ipcResult.message,
 							comfyuiError: ipcResult.comfyuiError
